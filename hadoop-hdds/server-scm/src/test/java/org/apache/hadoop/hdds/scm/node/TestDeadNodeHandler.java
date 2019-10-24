@@ -64,6 +64,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
+import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_DATANODE_MAX_PIPELINE_ENGAGEMENT;
+
 /**
  * Test DeadNodeHandler.
  */
@@ -73,7 +75,6 @@ public class TestDeadNodeHandler {
   private SCMNodeManager nodeManager;
   private ContainerManager containerManager;
   private NodeReportHandler nodeReportHandler;
-  private SCMPipelineManager pipelineManager;
   private DeadNodeHandler deadNodeHandler;
   private EventPublisher publisher;
   private EventQueue eventQueue;
@@ -85,15 +86,16 @@ public class TestDeadNodeHandler {
     storageDir = GenericTestUtils.getTempPath(
         TestDeadNodeHandler.class.getSimpleName() + UUID.randomUUID());
     conf.set(HddsConfigKeys.OZONE_METADATA_DIRS, storageDir);
+    conf.setInt(OZONE_DATANODE_MAX_PIPELINE_ENGAGEMENT, 0);
     eventQueue = new EventQueue();
     scm = HddsTestUtils.getScm(conf);
     nodeManager = (SCMNodeManager) scm.getScmNodeManager();
-    pipelineManager =
+    SCMPipelineManager manager =
         (SCMPipelineManager)scm.getPipelineManager();
     PipelineProvider mockRatisProvider =
-        new MockRatisPipelineProvider(nodeManager,
-            pipelineManager.getStateManager(), conf);
-    pipelineManager.setPipelineProvider(HddsProtos.ReplicationType.RATIS,
+        new MockRatisPipelineProvider(nodeManager, manager.getStateManager(),
+            conf);
+    manager.setPipelineProvider(HddsProtos.ReplicationType.RATIS,
         mockRatisProvider);
     containerManager = scm.getContainerManager();
     deadNodeHandler = new DeadNodeHandler(nodeManager,
@@ -147,8 +149,6 @@ public class TestDeadNodeHandler {
         TestUtils.createNodeReport(storageOne), null);
     nodeManager.register(TestUtils.randomDatanodeDetails(),
         TestUtils.createNodeReport(storageOne), null);
-
-    TestUtils.openAllRatisPipelines(pipelineManager);
 
     ContainerInfo container1 =
         TestUtils.allocateContainer(containerManager);

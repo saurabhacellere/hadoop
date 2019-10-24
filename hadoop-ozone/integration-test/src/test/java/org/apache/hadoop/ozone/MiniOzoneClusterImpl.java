@@ -143,16 +143,11 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       throws TimeoutException, InterruptedException {
     GenericTestUtils.waitFor(() -> {
       final int healthy = scm.getNodeCount(HEALTHY);
-      final boolean isNodeReady = healthy == hddsDatanodes.size();
-      final boolean exitSafeMode = !scm.isInSafeMode();
-
+      final boolean isReady = healthy == hddsDatanodes.size();
       LOG.info("{}. Got {} of {} DN Heartbeats.",
-          isNodeReady? "Nodes are ready" : "Waiting for nodes to be ready",
+          isReady? "Cluster is ready" : "Waiting for cluster to be ready",
           healthy, hddsDatanodes.size());
-      LOG.info(exitSafeMode? "Cluster exits safe mode" :
-              "Waiting for cluster to exit safe mode",
-          healthy, hddsDatanodes.size());
-      return isNodeReady && exitSafeMode;
+      return isReady;
     }, 1000, waitForClusterToBeReadyTimeout);
   }
 
@@ -499,6 +494,9 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
           streamBufferMaxSize.get(), streamBufferSizeUnit.get());
       conf.setStorageSize(OzoneConfigKeys.OZONE_SCM_BLOCK_SIZE, blockSize.get(),
           streamBufferSizeUnit.get());
+      // MiniOzoneCluster should have global pipeline upper limit.
+      conf.setInt(ScmConfigKeys.OZONE_SCM_PIPELINE_NUMBER_LIMIT,
+          pipelineNumber == 3 ? 2 * numOfDatanodes : pipelineNumber);
       configureTrace();
     }
 
@@ -620,6 +618,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       if (hbInterval.isPresent()) {
         conf.setTimeDuration(HDDS_HEARTBEAT_INTERVAL,
             hbInterval.get(), TimeUnit.MILLISECONDS);
+
       } else {
         conf.setTimeDuration(HDDS_HEARTBEAT_INTERVAL,
             DEFAULT_HB_INTERVAL_MS,

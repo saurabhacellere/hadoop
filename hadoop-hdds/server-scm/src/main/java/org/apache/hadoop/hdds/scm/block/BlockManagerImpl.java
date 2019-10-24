@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import javax.management.ObjectName;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.StorageUnit;
 import org.apache.hadoop.hdds.client.BlockID;
@@ -154,9 +153,7 @@ public class BlockManagerImpl implements BlockManager, BlockmanagerMXBean {
   public AllocatedBlock allocateBlock(final long size, ReplicationType type,
       ReplicationFactor factor, String owner, ExcludeList excludeList)
       throws IOException {
-    if (LOG.isTraceEnabled()) {
-      LOG.trace("Size;{} , type : {}, factor : {} ", size, type, factor);
-    }
+    LOG.trace("Size;{} , type : {}, factor : {} ", size, type, factor);
     ScmUtils.preCheck(ScmOps.allocateBlock, safeModePrecheck);
     if (size < 0 || size > containerSize) {
       LOG.warn("Invalid block size requested : {}", size);
@@ -191,8 +188,10 @@ public class BlockManagerImpl implements BlockManager, BlockmanagerMXBean {
           // TODO: #CLUTIL Remove creation logic when all replication types and
           // factors are handled by pipeline creator
           pipeline = pipelineManager.createPipeline(type, factor);
-          // wait until pipeline is ready
-          pipelineManager.waitPipelineReady(pipeline.getId(), 0);
+        } catch (SCMException se) {
+          LOG.warn("Pipeline creation failed for type:{} factor:{}. " +
+              "Datanodes may be used up.", type, factor, se);
+          break;
         } catch (IOException e) {
           LOG.warn("Pipeline creation failed for type:{} factor:{}. Retrying " +
                   "get pipelines call once.", type, factor, e);
@@ -246,10 +245,8 @@ public class BlockManagerImpl implements BlockManager, BlockmanagerMXBean {
       AllocatedBlock.Builder abb =  new AllocatedBlock.Builder()
           .setContainerBlockID(new ContainerBlockID(containerID, localID))
           .setPipeline(pipeline);
-      if (LOG.isTraceEnabled()) {
-        LOG.trace("New block allocated : {} Container ID: {}", localID,
-            containerID);
-      }
+      LOG.trace("New block allocated : {} Container ID: {}", localID,
+          containerID);
       pipelineManager.incNumBlocksAllocatedMetric(pipeline.getId());
       return abb.build();
     } catch (PipelineNotFoundException ex) {

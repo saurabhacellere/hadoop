@@ -46,7 +46,6 @@ public final class SCMPipelineMetrics implements MetricsSource {
 
   private MetricsRegistry registry;
 
-  private @Metric MutableCounterLong numPipelineAllocated;
   private @Metric MutableCounterLong numPipelineCreated;
   private @Metric MutableCounterLong numPipelineCreationFailed;
   private @Metric MutableCounterLong numPipelineDestroyed;
@@ -84,7 +83,6 @@ public final class SCMPipelineMetrics implements MetricsSource {
   @SuppressWarnings("SuspiciousMethodCalls")
   public void getMetrics(MetricsCollector collector, boolean all) {
     MetricsRecordBuilder recordBuilder = collector.addRecord(SOURCE_NAME);
-    numPipelineAllocated.snapshot(recordBuilder, true);
     numPipelineCreated.snapshot(recordBuilder, true);
     numPipelineCreationFailed.snapshot(recordBuilder, true);
     numPipelineDestroyed.snapshot(recordBuilder, true);
@@ -119,18 +117,18 @@ public final class SCMPipelineMetrics implements MetricsSource {
   }
 
   /**
-   * Increments number of pipeline allocation count, including succeeded
-   * and failed.
-   */
-  void incNumPipelineAllocated() {
-    numPipelineAllocated.incr();
-  }
-
-  /**
    * Increments number of successful pipeline creation count.
    */
   void incNumPipelineCreated() {
     numPipelineCreated.incr();
+  }
+
+  /**
+   * Get the number of pipeline created.
+   * @return number of pipeline
+   */
+  long getNumPipelineCreated() {
+    return numPipelineCreated.value();
   }
 
   /**
