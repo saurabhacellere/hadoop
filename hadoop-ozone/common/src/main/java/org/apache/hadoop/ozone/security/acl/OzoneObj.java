@@ -27,7 +27,7 @@ import java.util.Map;
 import static org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OzoneObj.StoreType.*;
 
 /**
- * Class representing an unique ozone object.
+ * Class representing a unique ozone object.
  * */
 public abstract class OzoneObj implements IOzoneObj {
 
@@ -95,7 +95,6 @@ public abstract class OzoneObj implements IOzoneObj {
     VOLUME(OzoneConsts.VOLUME),
     BUCKET(OzoneConsts.BUCKET),
     KEY(OzoneConsts.KEY),
-    OPEN_KEY(OzoneConsts.OPEN_KEY),
     PREFIX(OzoneConsts.PREFIX);
 
     /**
