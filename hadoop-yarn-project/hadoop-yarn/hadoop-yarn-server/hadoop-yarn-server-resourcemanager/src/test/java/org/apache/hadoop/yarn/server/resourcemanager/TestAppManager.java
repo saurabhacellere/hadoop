@@ -66,7 +66,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppMetrics;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.AMLivelinessMonitor;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptImpl;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpirer;
+import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpired;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacitySchedulerConfiguration;
@@ -185,7 +185,7 @@ public class TestAppManager extends AppManagerTestBase{
 
   private RMContext createMockRMContextInternal(ConcurrentMap<ApplicationId, RMApp> map) {
     Dispatcher rmDispatcher = new AsyncDispatcher();
-    ContainerAllocationExpirer containerAllocationExpirer = new ContainerAllocationExpirer(
+    ContainerAllocationExpired containerAllocationExpired = new ContainerAllocationExpired(
             rmDispatcher);
     AMLivelinessMonitor amLivelinessMonitor = new AMLivelinessMonitor(
             rmDispatcher);
@@ -193,7 +193,7 @@ public class TestAppManager extends AppManagerTestBase{
             rmDispatcher);
     RMApplicationHistoryWriter writer = mock(RMApplicationHistoryWriter.class);
     RMContext context = new RMContextImpl(rmDispatcher,
-            containerAllocationExpirer, amLivelinessMonitor, amFinishingMonitor,
+            containerAllocationExpired, amLivelinessMonitor, amFinishingMonitor,
             null, null, null, null, null) {
       @Override
       public ConcurrentMap<ApplicationId, RMApp> getRMApps() {
@@ -1063,9 +1063,6 @@ public class TestAppManager extends AppManagerTestBase{
   @Test (timeout = 30000)
   public void testEscapeApplicationSummary() {
     RMApp app = mock(RMAppImpl.class);
-    ApplicationSubmissionContext asc = mock(ApplicationSubmissionContext.class);
-    when(asc.getNodeLabelExpression()).thenReturn("test");
-    when(app.getApplicationSubmissionContext()).thenReturn(asc);
     when(app.getApplicationId()).thenReturn(
         ApplicationId.newInstance(100L, 1));
     when(app.getName()).thenReturn("Multiline\n\n\r\rAppName");
@@ -1075,7 +1072,6 @@ public class TestAppManager extends AppManagerTestBase{
     when(app.getApplicationType()).thenReturn("MAPREDUCE");
     when(app.getSubmitTime()).thenReturn(1000L);
     when(app.getLaunchTime()).thenReturn(2000L);
-    when(app.getApplicationTags()).thenReturn(Sets.newHashSet("tag2", "tag1"));
     Map<String, Long> resourceSecondsMap = new HashMap<>();
     resourceSecondsMap.put(ResourceInformation.MEMORY_MB.getName(), 16384L);
     resourceSecondsMap.put(ResourceInformation.VCORES.getName(), 64L);
@@ -1103,9 +1099,7 @@ public class TestAppManager extends AppManagerTestBase{
     assertTrue(msg.contains("preemptedNonAMContainers=10"));
     assertTrue(msg.contains("preemptedResources=<memory:1234\\, vCores:56>"));
     assertTrue(msg.contains("applicationType=MAPREDUCE"));
-    assertTrue(msg.contains("applicationTags=tag1\\,tag2"));
-    assertTrue(msg.contains("applicationNodeLabel=test"));
-  }
+ }
 
   @Test
   public void testRMAppSubmitWithQueueChanged() throws Exception {
