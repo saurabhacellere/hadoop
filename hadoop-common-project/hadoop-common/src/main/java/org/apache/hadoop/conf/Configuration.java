@@ -1885,6 +1885,8 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
     vStr = StringUtils.toLowerCase(vStr);
     ParsedTimeDuration vUnit = ParsedTimeDuration.unitFor(vStr);
     if (null == vUnit) {
+      logDeprecation("No unit for " + name + "(" + vStr + ") assuming " +
+          defaultUnit);
       vUnit = ParsedTimeDuration.unitFor(defaultUnit);
     } else {
       vStr = vStr.substring(0, vStr.lastIndexOf(vUnit.suffix()));
@@ -3058,7 +3060,7 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
     Object resource = wrapper.getResource();
     boolean isRestricted = wrapper.isParserRestricted();
     XMLStreamReader2 reader = null;
-    if (resource instanceof URL) {                  // an URL resource
+    if (resource instanceof URL) {                  // a URL resource
       reader  = (XMLStreamReader2)parse((URL)resource, isRestricted);
     } else if (resource instanceof String) {        // a CLASSPATH resource
       URL url = getResource((String)resource);

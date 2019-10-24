@@ -152,7 +152,7 @@ public class RouterAdmin extends Configured implements Tool {
     } else if (cmd.equals("-rm")) {
       return "\t[-rm <source>]";
     } else if (cmd.equals("-ls")) {
-      return "\t[-ls [-d] <path>]";
+      return "\t[-ls <path>]";
     } else if (cmd.equals("-getDestination")) {
       return "\t[-getDestination <path>]";
     } else if (cmd.equals("-setQuota")) {
@@ -180,9 +180,9 @@ public class RouterAdmin extends Configured implements Tool {
    */
   private void validateMax(String[] arg) {
     if (arg[0].equals("-ls")) {
-      if (arg.length > 3) {
+      if (arg.length > 2) {
         throw new IllegalArgumentException(
-            "Too many arguments, Max=2 argument allowed");
+            "Too many arguments, Max=1 argument allowed");
       }
     } else if (arg[0].equals("-getDestination")) {
       if (arg.length > 2) {
@@ -320,7 +320,11 @@ public class RouterAdmin extends Configured implements Tool {
           i++;
         }
       } else if ("-ls".equals(cmd)) {
-        listMounts(argv, i);
+        if (argv.length > 1) {
+          listMounts(argv[i]);
+        } else {
+          listMounts("/");
+        }
       } else if ("-getDestination".equals(cmd)) {
         getDestination(argv[i]);
       } else if ("-setQuota".equals(cmd)) {
@@ -357,7 +361,7 @@ public class RouterAdmin extends Configured implements Tool {
       System.err.println(cmd.substring(1) + ": " + arge.getLocalizedMessage());
       printUsage(cmd);
     } catch (RemoteException e) {
-      // This is a error returned by the server.
+      // This is an error returned by the server.
       // Print out the first line of the error message, ignore the stack trace.
       exitCode = -1;
       debugException = e;
@@ -728,22 +732,7 @@ public class RouterAdmin extends Configured implements Tool {
    * @param path Path to list.
    * @throws IOException If it cannot be listed.
    */
-  public void listMounts(String[] argv, int i) throws IOException {
-    String path;
-    boolean detail = false;
-    if (argv.length == 1) {
-      path = "/";
-    } else if (argv[i].equals("-d")) { // Check if -d parameter is specified.
-      detail = true;
-      if (argv.length == 2) {
-        path = "/"; // If no path is provide with -ls -d.
-      } else {
-        path = argv[++i];
-      }
-    } else {
-      path = argv[i];
-    }
-
+  public void listMounts(String path) throws IOException {
     path = normalizeFileSystemPath(path);
     MountTableManager mountTable = client.getMountTableManager();
     GetMountTableEntriesRequest request =
@@ -751,20 +740,14 @@ public class RouterAdmin extends Configured implements Tool {
     GetMountTableEntriesResponse response =
         mountTable.getMountTableEntries(request);
     List<MountTable> entries = response.getEntries();
-    printMounts(entries, detail);
+    printMounts(entries);
   }
 
-  private static void printMounts(List<MountTable> entries, boolean detail) {
+  private static void printMounts(List<MountTable> entries) {
     System.out.println("Mount Table Entries:");
-    if (detail) {
-      System.out.println(
-          String.format("%-25s %-25s %-25s %-25s %-10s %-30s %-10s %-10s %-15s",
-              "Source", "Destinations", "Owner", "Group", "Mode", "Quota/Usage",
-              "Order", "ReadOnly", "FaultTolerant"));
-    } else {
-      System.out.println(String.format("%-25s %-25s %-25s %-25s %-10s %-30s",
-          "Source", "Destinations", "Owner", "Group", "Mode", "Quota/Usage"));
-    }
+    System.out.println(String.format(
+        "%-25s %-25s %-25s %-25s %-25s %-25s",
+        "Source", "Destinations", "Owner", "Group", "Mode", "Quota/Usage"));
     for (MountTable entry : entries) {
       StringBuilder destBuilder = new StringBuilder();
       for (RemoteLocation location : entry.getDestinations()) {
@@ -777,21 +760,10 @@ public class RouterAdmin extends Configured implements Tool {
       System.out.print(String.format("%-25s %-25s", entry.getSourcePath(),
           destBuilder.toString()));
 
-      System.out.print(String.format(" %-25s %-25s %-10s",
+      System.out.print(String.format(" %-25s %-25s %-25s",
           entry.getOwnerName(), entry.getGroupName(), entry.getMode()));
 
-      System.out.print(String.format(" %-30s", entry.getQuota()));
-
-      if (detail) {
-        System.out.print(String.format(" %-10s", entry.getDestOrder()));
-
-        System.out.print(
-            String.format(" %-10s", entry.isReadOnly() ? "Read-Only" : ""));
-
-        System.out.print(String.format(" %-15s",
-            entry.isFaultTolerant() ? "Fault-Tolerant" : ""));
-      }
-      System.out.println();
+      System.out.println(String.format(" %-25s", entry.getQuota()));
     }
   }
 
