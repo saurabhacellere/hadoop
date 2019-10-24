@@ -543,24 +543,6 @@ public class YarnConfiguration extends Configuration {
   public static final String RM_NODES_INCLUDE_FILE_PATH = 
     RM_PREFIX + "nodes.include-path";
   public static final String DEFAULT_RM_NODES_INCLUDE_FILE_PATH = "";
-
-  /** Enable submission pre-processor.*/
-  public static final String RM_SUBMISSION_PREPROCESSOR_ENABLED =
-      RM_PREFIX + "submission-preprocessor.enabled";
-  public static final boolean DEFAULT_RM_SUBMISSION_PREPROCESSOR_ENABLED =
-      false;
-
-  /** Path to file with hosts for the submission processor to handle.*/
-  public static final String RM_SUBMISSION_PREPROCESSOR_FILE_PATH =
-      RM_PREFIX + "submission-preprocessor.file-path";
-  public static final String DEFAULT_RM_SUBMISSION_PREPROCESSOR_FILE_PATH =
-      "";
-
-  /** Submission processor refresh interval.*/
-  public static final String RM_SUBMISSION_PREPROCESSOR_REFRESH_INTERVAL_MS =
-      RM_PREFIX + "submission-preprocessor.file-refresh-interval-ms";
-  public static final int
-      DEFAULT_RM_SUBMISSION_PREPROCESSOR_REFRESH_INTERVAL_MS = 0;
   
   /** Path to file with nodes to exclude.*/
   public static final String RM_NODES_EXCLUDE_FILE_PATH = 
@@ -942,6 +924,10 @@ public class YarnConfiguration extends Configuration {
       CLIENT_FAILOVER_PREFIX + "proxy-provider";
   public static final String DEFAULT_CLIENT_FAILOVER_PROXY_PROVIDER =
       "org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider";
+  public static final String CLIENT_FAILOVER_NO_HA_PROXY_PROVIDER =
+      CLIENT_FAILOVER_PREFIX + "no-ha-proxy-provider";
+  public static final String DEFAULT_CLIENT_FAILOVER_NO_HA_PROXY_PROVIDER =
+      "org.apache.hadoop.yarn.client.DefaultNoHARMFailoverProxyProvider";
 
   public static final String CLIENT_FAILOVER_MAX_ATTEMPTS =
       CLIENT_FAILOVER_PREFIX + "max-attempts";
@@ -2215,39 +2201,6 @@ public class YarnConfiguration extends Configuration {
   public static final String DEFAULT_NM_NONSECURE_MODE_USER_PATTERN = 
       "^[_.A-Za-z0-9][-@_.A-Za-z0-9]{0,255}?[$]?$";
 
-  /**
-   * Whether or not to use precreated pool of local users in secure mode.
-   */
-  public static final String NM_SECURE_MODE_USE_POOL_USER = NM_PREFIX +
-      "linux-container-executor.secure-mode.use-pool-user";
-
-  public static final boolean DEFAULT_NM_SECURE_MODE_USE_POOL_USER = false;
-
-  /**
-   * The number of pool local users. If set to -1, we'll take the value from:
-   * NM_PREFIX + "resource.cpu-vcores"
-   */
-  public static final String NM_SECURE_MODE_POOL_USER_COUNT = NM_PREFIX +
-      "linux-container-executor.secure-mode.pool-user-count";
-
-  public static final int DEFAULT_NM_SECURE_MODE_POOL_USER_COUNT = -1;
-
-  /**
-   * The prefix of the local pool users can be used by Yarn Secure Container.
-   * The number of local pool users to use is specified by:
-   *
-   * For example, if prefix is "user" and pool-user-count configured to 20,
-   * then local user names are:
-   *   user0
-   *   user1
-   *   ...
-   *   user19
-   */
-  public static final String NM_SECURE_MODE_POOL_USER_PREFIX = NM_PREFIX +
-      "linux-container-executor.secure-mode.pool-user-prefix";
-
-  public static final String DEFAULT_NM_SECURE_MODE_POOL_USER_PREFIX = "user";
-
   /** The type of resource enforcement to use with the
    *  linux container executor.
    */
@@ -2533,20 +2486,6 @@ public class YarnConfiguration extends Configuration {
       YARN_PREFIX + "dispatcher.drain-events.timeout";
 
   public static final long DEFAULT_DISPATCHER_DRAIN_EVENTS_TIMEOUT = 300000;
-
-  /**
-   * The threshold used to trigger the logging of event types and counts
-   *  in RM's main event dispatcher. Default value is 5000,
-   *  which means RM will print events info when the queue size cumulatively
-   *  reaches 5000 every time. Such info can be used to reveal what
-   *  kind of events that RM is stuck at processing mostly,
-   *  it can help to narrow down certain performance issues.
-   */
-  public static final String
-          YARN_DISPATCHER_PRINT_EVENTS_INFO_THRESHOLD =
-          YARN_PREFIX + "dispatcher.print-events-info.threshold";
-  public static final int
-          DEFAULT_YARN_DISPATCHER_PRINT_EVENTS_INFO_THRESHOLD = 5000;
 
   /**
    * CLASSPATH for YARN applications. A comma-separated list of CLASSPATH
@@ -3992,10 +3931,6 @@ public class YarnConfiguration extends Configuration {
       "yarn.webapp.filter-entity-list-by-user";
   public static final boolean DEFAULT_DISPLAY_APPS_FOR_LOGGED_IN_USER =
       false;
-
-  public static final String FILTER_INVALID_XML_CHARS =
-      "yarn.webapp.filter-invalid-xml-chars";
-  public static final boolean DEFAULT_FILTER_INVALID_XML_CHARS = false;
 
   // RM and NM CSRF props
   public static final String REST_CSRF = "webapp.rest-csrf.";
