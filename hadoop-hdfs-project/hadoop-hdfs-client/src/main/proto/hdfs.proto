@@ -21,7 +21,7 @@
  * Please see http://wiki.apache.org/hadoop/Compatibility
  * for what changes are allowed for a *stable* .proto interface.
  */
-
+syntax="proto2";
 // This file contains protocol buffers that are used throughout HDFS -- i.e.
 // by the client, server, and data transfer protocols.
 
@@ -38,7 +38,7 @@ import "acl.proto";
  * Extended block idenfies a block
  */
 message ExtendedBlockProto {
-  required string poolId = 1;   // Block pool id - gloablly unique across clusters
+  required string poolId = 1;   // Block pool id - globally unique across clusters
   required uint64 blockId = 2;  // the local id within a pool
   required uint64 generationStamp = 3;
   optional uint64 numBytes = 4 [default = 0];  // len does not belong in ebid 
@@ -252,31 +252,6 @@ message BlockStoragePolicyProto {
   optional StorageTypesProto replicationFallbackPolicy = 5;
 }
 
-/**
- * The BlockAliasType defines the type of block alias in the LocatedBlock, if it
- * exists.
- */
-enum BlockAliasType {
-    FILE_REGION = 1;
-}
-
-/**
- * A FileRegion gives information about how to retrieve a block from it's
- * PROVIDED location.
- */
-message FileRegionProto {
-    optional uint64 blockId = 1;
-    optional string uri = 2;
-    optional uint64 offset = 3;
-    optional uint64 length = 4;
-    optional uint64 genStamp = 5; // Generation Stamp
-    optional bytes nonce = 6;
-}
-
-message BlockAliasProto {
-    required BlockAliasType type = 1;
-    optional FileRegionProto fileRegion = 2;
-}
 
 /**
  * A LocatedBlock gives information about a block and its location.
@@ -297,11 +272,6 @@ message LocatedBlockProto {
   // striped block related fields
   optional bytes blockIndices = 9; // used for striped block to indicate block index for each storage
   repeated hadoop.common.TokenProto blockTokens = 10; // each internal block has a block token
-
-  optional bytes blockAlias = 11; // Block Alias information. This is proxied
-                                  // from the NN to the DN as bytes through the
-                                  // client to allow it to be  forward
-                                  // compatible
 }
 
 message DataEncryptionKeyProto {
@@ -577,6 +547,7 @@ message SnapshottableDirectoryListingProto {
   repeated SnapshottableDirectoryStatusProto snapshottableDirListing = 1;
 }
 
+
 /**
  * Snapshot diff report entry
  */
@@ -584,6 +555,7 @@ message SnapshotDiffReportEntryProto {
   required bytes fullpath = 1;
   required string modificationLabel = 2;
   optional bytes targetPath = 3;
+  optional HdfsFileStatusProto.FileType fileType = 4;
 }
 
 /**
@@ -606,6 +578,7 @@ message SnapshotDiffReportListingEntryProto {
   required bool isReference = 3;
   optional bytes targetPath = 4;
   optional uint64 fileId = 5;
+  optional HdfsFileStatusProto.FileType fileType = 6;
 }
 
 message SnapshotDiffReportCursorProto {
@@ -701,5 +674,5 @@ message BlockTokenSecretProto {
   repeated AccessModeProto modes = 6;
   repeated StorageTypeProto storageTypes = 7;
   repeated string storageIds = 8;
-  optional bytes blockAlias = 9;
+  optional bytes handshakeSecret = 9;
 }
