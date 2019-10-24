@@ -158,8 +158,8 @@ that may ultimately fail will fail faster.
 
 ADL SDK will by default attempt to create secure socket connections over
 OpenSSL as they provide significant performance improvements over Https. If
-there are runtime issues, SDK will default connections over Default_JSE. This
+there are runtime issues, SDK will default connections over Default_JSSE. This
 can be overridden with the hadoop property `adl.ssl.channel.mode`. Possible
-values for this config are OpenSSL, Default_JSE and Default (default).
-Setting the config to OpenSSL or Default_JSE will try the connection to
+values for this config are OpenSSL, Default_JSSE and Default (default).
+Setting the config to OpenSSL or Default_JSSE will try the connection to
 only that mode.
