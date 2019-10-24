@@ -113,6 +113,8 @@
 
     <!-- Maven protoc compiler -->
     <protobuf-maven-plugin.version>0.5.1</protobuf-maven-plugin.version>
+    <protobuf-compile.version>3.5.1</protobuf-compile.version>
+    <grpc.version>1.10.0</grpc.version>
     <os-maven-plugin.version>1.5.0.Final</os-maven-plugin.version>
 
     <!-- define the Java language version used by the compiler -->
@@ -636,7 +638,7 @@
       <dependency>
         <groupId>org.apache.commons</groupId>
         <artifactId>commons-compress</artifactId>
-        <version>1.19</version>
+        <version>1.18</version>
       </dependency>
       <dependency>
         <groupId>org.apache.commons</groupId>
@@ -1713,56 +1715,9 @@
           <artifactId>frontend-maven-plugin</artifactId>
           <version>${frontend-maven-plugin.version}</version>
         </plugin>
-        <plugin>
-          <groupId>org.xolstice.maven.plugins</groupId>
-          <artifactId>protobuf-maven-plugin</artifactId>
-          <version>${protobuf-maven-plugin.version}</version>
-          <extensions>true</extensions>
-          <configuration>
-            <protocArtifact>
-              com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}
-            </protocArtifact>
-            <attachProtoSources>false</attachProtoSources>
-          </configuration>
-          <executions>
-            <execution>
-              <id>src-compile-protoc</id>
-              <phase>generate-sources</phase>
-              <goals>
-                <goal>compile</goal>
-              </goals>
-              <configuration>
-                <includeDependenciesInDescriptorSet>false</includeDependenciesInDescriptorSet>
-                <protoSourceRoot>${basedir}/src/main/proto</protoSourceRoot>
-                <outputDirectory>${project.build.directory}/generated-sources/java</outputDirectory>
-                <clearOutputDirectory>false</clearOutputDirectory>
-                <skip>true</skip>
-              </configuration>
-            </execution>
-            <execution>
-              <id>src-test-compile-protoc</id>
-              <phase>generate-test-sources</phase>
-              <goals>
-                <goal>test-compile</goal>
-              </goals>
-              <configuration>
-                <protoTestSourceRoot>${basedir}/src/test/proto</protoTestSourceRoot>
-                <outputDirectory>${project.build.directory}/generated-test-sources/java</outputDirectory>
-                <clearOutputDirectory>false</clearOutputDirectory>
-                <skip>true</skip>
-              </configuration>
-            </execution>
-          </executions>
-        </plugin>
       </plugins>
     </pluginManagement>
-    <extensions>
-      <extension>
-        <groupId>kr.motd.maven</groupId>
-        <artifactId>os-maven-plugin</artifactId>
-        <version>${os-maven-plugin.version}</version>
-      </extension>
-    </extensions>
+
     <plugins>
       <plugin>
         <artifactId>maven-clean-plugin</artifactId>
