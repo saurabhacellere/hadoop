@@ -118,7 +118,7 @@ public class AzureBlobFileSystemStore implements Closeable {
   private URI uri;
   private String userName;
   private String primaryUserGroup;
-  private static final String DATE_TIME_PATTERN = "E, dd MMM yyyy HH:mm:ss z";
+  private static final String DATE_TIME_PATTERN = "E, dd MMM yyyy HH:mm:ss 'GMT'";
   private static final String TOKEN_DATE_PATTERN = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS'Z'";
   private static final String XMS_PROPERTIES_ENCODING = "ISO-8859-1";
   private static final int LIST_MAX_RESULTS = 500;
@@ -363,7 +363,7 @@ public class AzureBlobFileSystemStore implements Closeable {
         0,
         abfsConfiguration.getWriteBufferSize(),
         abfsConfiguration.isFlushEnabled(),
-        abfsConfiguration.isOutputStreamFlushDisabled());
+        abfsConfiguration.isAbfsFlushEnabled());
   }
 
   public void createDirectory(final Path path, final FsPermission permission, final FsPermission umask)
@@ -436,7 +436,7 @@ public class AzureBlobFileSystemStore implements Closeable {
         offset,
         abfsConfiguration.getWriteBufferSize(),
         abfsConfiguration.isFlushEnabled(),
-        abfsConfiguration.isOutputStreamFlushDisabled());
+        abfsConfiguration.isAbfsFlushEnabled());
   }
 
   public void rename(final Path source, final Path destination) throws
@@ -731,8 +731,8 @@ public class AzureBlobFileSystemStore implements Closeable {
             path.toString(),
             AclEntry.aclSpecToString(aclSpec));
 
-    identityTransformer.transformAclEntriesForSetRequest(aclSpec);
-    final Map<String, String> modifyAclEntries = AbfsAclHelper.deserializeAclSpec(AclEntry.aclSpecToString(aclSpec));
+    final List<AclEntry> transformedAclEntries = identityTransformer.transformAclEntriesForSetRequest(aclSpec);
+    final Map<String, String> modifyAclEntries = AbfsAclHelper.deserializeAclSpec(AclEntry.aclSpecToString(transformedAclEntries));
     boolean useUpn = AbfsAclHelper.isUpnFormatAclEntries(modifyAclEntries);
 
     final AbfsRestOperation op = client.getAclStatus(AbfsHttpConstants.FORWARD_SLASH + getRelativePath(path, true), useUpn);
@@ -758,8 +758,8 @@ public class AzureBlobFileSystemStore implements Closeable {
             path.toString(),
             AclEntry.aclSpecToString(aclSpec));
 
-    identityTransformer.transformAclEntriesForSetRequest(aclSpec);
-    final Map<String, String> removeAclEntries = AbfsAclHelper.deserializeAclSpec(AclEntry.aclSpecToString(aclSpec));
+    final List<AclEntry> transformedAclEntries = identityTransformer.transformAclEntriesForSetRequest(aclSpec);
+    final Map<String, String> removeAclEntries = AbfsAclHelper.deserializeAclSpec(AclEntry.aclSpecToString(transformedAclEntries));
     boolean isUpnFormat = AbfsAclHelper.isUpnFormatAclEntries(removeAclEntries);
 
     final AbfsRestOperation op = client.getAclStatus(AbfsHttpConstants.FORWARD_SLASH + getRelativePath(path, true), isUpnFormat);
@@ -837,8 +837,8 @@ public class AzureBlobFileSystemStore implements Closeable {
             path.toString(),
             AclEntry.aclSpecToString(aclSpec));
 
-    identityTransformer.transformAclEntriesForSetRequest(aclSpec);
-    final Map<String, String> aclEntries = AbfsAclHelper.deserializeAclSpec(AclEntry.aclSpecToString(aclSpec));
+    final List<AclEntry> transformedAclEntries = identityTransformer.transformAclEntriesForSetRequest(aclSpec);
+    final Map<String, String> aclEntries = AbfsAclHelper.deserializeAclSpec(AclEntry.aclSpecToString(transformedAclEntries));
     final boolean isUpnFormat = AbfsAclHelper.isUpnFormatAclEntries(aclEntries);
 
     final AbfsRestOperation op = client.getAclStatus(AbfsHttpConstants.FORWARD_SLASH + getRelativePath(path, true), isUpnFormat);
@@ -877,8 +877,7 @@ public class AzureBlobFileSystemStore implements Closeable {
     final String permissions = result.getResponseHeader(HttpHeaderConfigurations.X_MS_PERMISSIONS);
     final String aclSpecString = op.getResult().getResponseHeader(HttpHeaderConfigurations.X_MS_ACL);
 
-    final List<AclEntry> aclEntries = AclEntry.parseAclSpec(AbfsAclHelper.processAclString(aclSpecString), true);
-    identityTransformer.transformAclEntriesForGetRequest(aclEntries, userName, primaryUserGroup);
+    final List<AclEntry> processedAclEntries = AclEntry.parseAclSpec(AbfsAclHelper.processAclString(aclSpecString), true);
     final FsPermission fsPermission = permissions == null ? new AbfsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL)
             : AbfsPermission.valueOf(permissions);
 
@@ -888,7 +887,7 @@ public class AzureBlobFileSystemStore implements Closeable {
 
     aclStatusBuilder.setPermission(fsPermission);
     aclStatusBuilder.stickyBit(fsPermission.getStickyBit());
-    aclStatusBuilder.addEntries(aclEntries);
+    aclStatusBuilder.addEntries(processedAclEntries);
     return aclStatusBuilder.build();
   }
 
