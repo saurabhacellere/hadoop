@@ -645,33 +645,8 @@ public class KeyManagerImpl implements KeyManager {
           });
         }
       }
-      // Refresh container pipeline info from SCM
-      // based on OmKeyArgs.refreshPipeline flag
-      // 1. Client send initial read request OmKeyArgs.refreshPipeline = false
-      // and uses the pipeline cached in OM to access datanode
-      // 2. If succeeded, done.
-      // 3. If failed due to pipeline does not exist or invalid pipeline state
-      //    exception, client should retry lookupKey with
-      //    OmKeyArgs.refreshPipeline = true
       if (args.getRefreshPipeline()) {
-        for (OmKeyLocationInfoGroup key : value.getKeyLocationVersions()) {
-          key.getLocationList().forEach(k -> {
-            // TODO: fix Some tests that may not initialize container client
-            // The production should always have containerClient initialized.
-            if (scmClient.getContainerClient() != null) {
-              try {
-                ContainerWithPipeline cp = scmClient.getContainerClient()
-                    .getContainerWithPipeline(k.getContainerID());
-                if (!cp.getPipeline().equals(k.getPipeline())) {
-                  k.setPipeline(cp.getPipeline());
-                }
-              } catch (IOException e) {
-                LOG.error("Unable to update pipeline for container:{}",
-                    k.getContainerID());
-              }
-            }
-          });
-        }
+        refreshPipeline(value);
       }
       if (args.getSortDatanodes()) {
         sortDatanodeInPipeline(value, clientAddress);
@@ -685,6 +660,48 @@ public class KeyManagerImpl implements KeyManager {
     } finally {
       metadataManager.getLock().releaseReadLock(BUCKET_LOCK, volumeName,
           bucketName);
+    }
+  }
+
+  /**
+   * Refresh pipeline info in OM by asking SCM.
+   * @param value OmKeyInfo
+   */
+  @VisibleForTesting
+  protected void refreshPipeline(OmKeyInfo value) {
+    // Refresh container pipeline info from SCM
+    // based on OmKeyArgs.refreshPipeline flag
+    // 1. Client send initial read request OmKeyArgs.refreshPipeline = false
+    // and uses the pipeline cached in OM to access datanode
+    // 2. If succeeded, done.
+    // 3. If failed due to pipeline does not exist or invalid pipeline state
+    //    exception, client should retry lookupKey with
+    //    OmKeyArgs.refreshPipeline = true
+    Map<Long, ContainerWithPipeline> containerWithPipelineMap = new HashMap<>();
+    for (OmKeyLocationInfoGroup key : value.getKeyLocationVersions()) {
+      key.getLocationList().forEach(k -> {
+        // TODO: fix Some tests that may not initialize container client
+        // The production should always have containerClient initialized.
+        if (scmClient.getContainerClient() != null) {
+          ContainerWithPipeline cp = containerWithPipelineMap
+              .computeIfAbsent(k.getContainerID(), cId -> {
+                try {
+                  return scmClient.getContainerClient()
+                      .getContainerWithPipeline(cId);
+                } catch (IOException e) {
+                  LOG.error("Unable to update pipeline for container:{}",
+                      k.getContainerID());
+                  return null;
+                }
+              });
+          if (cp == null) {
+            return;
+          }
+          if (!cp.getPipeline().equals(k.getPipeline())) {
+            k.setPipeline(cp.getPipeline());
+          }
+        }
+      });
     }
   }
 
@@ -1661,10 +1678,8 @@ public class KeyManagerImpl implements KeyManager {
         if (keyInfo == null) {
           // the key does not exist, but it is a parent "dir" of some key
           // let access be determined based on volume/bucket/prefix ACL
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("key:{} is non-existent parent, permit access to user:{}",
-                keyName, context.getClientUgi());
-          }
+          LOG.debug("key:{} is non-existent parent, permit access to user:{}",
+              keyName, context.getClientUgi());
           return true;
         }
       } catch (OMException e) {
@@ -1680,10 +1695,8 @@ public class KeyManagerImpl implements KeyManager {
 
       boolean hasAccess = OzoneAclUtil.checkAclRight(
           keyInfo.getAcls(), context);
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("user:{} has access rights for key:{} :{} ",
-            context.getClientUgi(), ozObject.getKeyName(), hasAccess);
-      }
+      LOG.debug("user:{} has access rights for key:{} :{} ",
+          context.getClientUgi(), ozObject.getKeyName(), hasAccess);
       return hasAccess;
     } catch (IOException ex) {
       if(ex instanceof OMException) {
@@ -1753,6 +1766,9 @@ public class KeyManagerImpl implements KeyManager {
           volumeName, bucketName, keyName);
       OmKeyInfo fileKeyInfo = metadataManager.getKeyTable().get(fileKeyBytes);
       if (fileKeyInfo != null) {
+        if (args.getRefreshPipeline()) {
+          refreshPipeline(fileKeyInfo);
+        }
         // this is a file
         return new OzoneFileStatus(fileKeyInfo, scmBlockSize, false);
       }
@@ -1770,11 +1786,10 @@ public class KeyManagerImpl implements KeyManager {
       if (keys.iterator().hasNext()) {
         return new OzoneFileStatus(keyName);
       }
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Unable to get file status for the key: volume: {}, bucket:" +
-                " {}, key: {}, with error: No such file exists.", volumeName,
-            bucketName, keyName);
-      }
+
+      LOG.debug("Unable to get file status for the key: volume:" + volumeName +
+          " bucket:" + bucketName + " key:" + keyName + " with error no " +
+          "such file exists:");
       throw new OMException("Unable to get file status: volume: " +
           volumeName + " bucket: " + bucketName + " key: " + keyName,
           FILE_NOT_FOUND);
@@ -2137,10 +2152,8 @@ public class KeyManagerImpl implements KeyManager {
             List<DatanodeDetails> sortedNodes = scmClient.getBlockClient()
                 .sortDatanodes(nodeList, clientMachine);
             k.getPipeline().setNodesInOrder(sortedNodes);
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Sort datanodes {} for client {}, return {}", nodes,
-                  clientMachine, sortedNodes);
-            }
+            LOG.debug("Sort datanodes {} for client {}, return {}", nodes,
+                clientMachine, sortedNodes);
           } catch (IOException e) {
             LOG.warn("Unable to sort datanodes based on distance to " +
                 "client, volume=" + keyInfo.getVolumeName() +
