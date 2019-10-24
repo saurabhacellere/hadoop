@@ -70,8 +70,7 @@ public class DFSStripedInputStream extends DFSInputStream {
   private final int groupSize;
   /** the buffer for a complete stripe. */
   private ByteBuffer curStripeBuf;
-  @VisibleForTesting
-  protected ByteBuffer parityBuf;
+  private ByteBuffer parityBuf;
   private final ErasureCodingPolicy ecPolicy;
   private RawErasureDecoder decoder;
 
@@ -130,7 +129,7 @@ public class DFSStripedInputStream extends DFSInputStream {
     curStripeRange = new StripeRange(0, 0);
   }
 
-  protected synchronized ByteBuffer getParityBuffer() {
+  protected ByteBuffer getParityBuffer() {
     if (parityBuf == null) {
       parityBuf = BUFFER_POOL.getBuffer(useDirectBuffer(),
           cellSize * parityBlkNum);
@@ -145,10 +144,6 @@ public class DFSStripedInputStream extends DFSInputStream {
 
   protected String getSrc() {
     return src;
-  }
-
-  protected DFSClient getDFSClient() {
-    return dfsClient;
   }
 
   protected LocatedBlocks getLocatedBlocks() {
@@ -283,7 +278,7 @@ public class DFSStripedInputStream extends DFSInputStream {
               "block" + block.getBlock(), e);
           // re-fetch the block in case the block has been moved
           fetchBlockAt(block.getStartOffset());
-          addToDeadNodes(dnInfo.info);
+          addToLocalDeadNodes(dnInfo.info);
         }
       }
       if (reader != null) {
@@ -554,18 +549,5 @@ public class DFSStripedInputStream extends DFSInputStream {
   public synchronized void releaseBuffer(ByteBuffer buffer) {
     throw new UnsupportedOperationException(
         "Not support enhanced byte buffer access.");
-  }
-
-  @Override
-  public synchronized void unbuffer() {
-    closeCurrentBlockReaders();
-    if (curStripeBuf != null) {
-      BUFFER_POOL.putBuffer(curStripeBuf);
-      curStripeBuf = null;
-    }
-    if (parityBuf != null) {
-      BUFFER_POOL.putBuffer(parityBuf);
-      parityBuf = null;
-    }
   }
 }
