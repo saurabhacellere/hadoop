@@ -18,7 +18,6 @@
 package org.apache.hadoop.ozone.web.ozShell.bucket;
 
 import org.apache.hadoop.hdds.protocol.StorageType;
-import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.client.BucketArgs;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
@@ -45,11 +44,6 @@ public class CreateBucketHandler extends Handler {
       description = "bucket encryption key name")
   private String bekName;
 
-  @Option(names = {"--enforcegdpr", "-g"},
-      description = "if true, indicates GDPR enforced bucket, " +
-          "false/unspecified indicates otherwise")
-  private Boolean isGdprEnforced;
-
   /**
    * Executes create bucket.
    */
@@ -67,14 +61,6 @@ public class CreateBucketHandler extends Handler {
         .setStorageType(StorageType.DEFAULT)
         .setVersioning(false);
 
-    if(isGdprEnforced != null) {
-      if(isGdprEnforced) {
-        bb.addMetadata(OzoneConsts.GDPR_FLAG, String.valueOf(Boolean.TRUE));
-      } else {
-        bb.addMetadata(OzoneConsts.GDPR_FLAG, String.valueOf(Boolean.FALSE));
-      }
-    }
-
     if (bekName != null) {
       if (!bekName.isEmpty()) {
         bb.setBucketEncryptionKey(bekName);
@@ -88,6 +74,7 @@ public class CreateBucketHandler extends Handler {
       System.out.printf("Volume Name : %s%n", volumeName);
       System.out.printf("Bucket Name : %s%n", bucketName);
       if (bekName != null) {
+        bb.setBucketEncryptionKey(bekName);
         System.out.printf("Bucket Encryption enabled with Key Name: %s%n",
             bekName);
       }
