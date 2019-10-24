@@ -1363,6 +1363,22 @@ public class TestBalancer {
     } catch (IllegalArgumentException ignored) {
       // expected
     }
+
+    parameters = new String[] {"-sourceThreshold"};
+    try {
+      Balancer.Cli.parse(parameters);
+      fail(reason + " for -sourceThreshold parameter");
+    } catch (IllegalArgumentException ignored) {
+      // expected
+    }
+
+    parameters = new String[] {"-sourceThreshold", "101"};
+    try {
+      Balancer.Cli.parse(parameters);
+      fail(reason + " for -sourceThreshold parameter");
+    } catch (IllegalArgumentException ignored) {
+      // expected
+    }
   }
 
   @Test
@@ -2032,6 +2048,51 @@ public class TestBalancer {
       final int r = Balancer.run(namenodes, p, conf);
       assertEquals(ExitStatus.SUCCESS.getExitCode(), r);
     }
+  }
+
+  @Test(timeout = 60000)
+  public void testBalancerWithSourceThreshold() throws IOException, TimeoutException, InterruptedException {
+    final Configuration conf = new HdfsConfiguration();
+    initConf(conf);
+
+    final long capacity = 1000L;
+    cluster = new MiniDFSCluster.Builder(conf)
+        .numDataNodes(1)
+        .simulatedCapacities(new long[]{capacity})
+        .build();
+
+    final Collection<URI> namenodes = DFSUtil.getInternalNsRpcUris(conf);
+
+    // First node with 100% usage
+    createFile(cluster, new Path("test1"), capacity, (short) 1, 0);
+    // Second node with 80% usage
+    cluster.startDataNodes(conf, 1, true, null, null, new long[]{capacity});
+    createFile(cluster, new Path("test2"), capacity - 200, (short) 1, 0);
+    // Create a empty node
+    cluster.startDataNodes(conf, 1, true,
+        null, null, new long[]{capacity});
+
+    cluster.triggerBlockReports();
+    cluster.waitFirstBRCompleted(0, 6000);
+
+    final BalancerParameters p = Balancer.Cli.parse(new String[] {
+        "-policy", BalancingPolicy.Node.INSTANCE.getName(),
+        "-threshold", "1",
+        "-sourceThreshold", "85"
+    });
+    Balancer.run(namenodes, p, conf);
+
+    client = NameNodeProxies.createProxy(conf,
+        cluster.getFileSystem(0).getUri(), ClientProtocol.class).getProxy();
+
+    DatanodeInfo[] datanodeReport = client.getDatanodeReport(DatanodeReportType.ALL);
+
+    // Node with 100% usage is balanced according to threshold, node with 80% is skipped.
+    long maxUsage = 0;
+    for (int i = 0; i < 3; i++) {
+      maxUsage = Math.max(maxUsage, datanodeReport[i].getDfsUsed());
+    }
+    assertEquals(capacity - 200, maxUsage);
   }
 
   public void integrationTestWithStripedFile(Configuration conf) throws Exception {
