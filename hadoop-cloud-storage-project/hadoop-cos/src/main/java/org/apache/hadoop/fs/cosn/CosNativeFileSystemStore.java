@@ -24,6 +24,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -67,6 +68,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.cosn.auth.COSCredentialProviderList;
 import org.apache.hadoop.util.VersionInfo;
 import org.apache.http.HttpStatus;
+
+import javax.annotation.Nullable;
 
 /**
  * The class actually performs access operation to the COS blob store.
@@ -175,7 +178,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
       PutObjectResult putObjectResult =
           (PutObjectResult) callCOSClientWithRetry(putObjectRequest);
       LOG.debug("Store file successfully. COS key: [{}], ETag: [{}], "
-          + "MD5: [{}].", key, putObjectResult.getETag(), new String(md5Hash));
+          + "MD5: [{}].", key, putObjectResult.getETag(), Charset.defaultCharset());
     } catch (Exception e) {
       String errMsg = String.format("Store file failed. COS key: [%s], "
           + "exception: [%s]", key, e.toString());
@@ -197,7 +200,7 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
       throws IOException {
     LOG.info("Store file from local path: [{}]. file length: [{}] COS key: " +
             "[{}] MD5: [{}].", file.getCanonicalPath(), file.length(), key,
-        new String(md5Hash));
+        Charset.defaultCharset());
     storeFileWithRetry(key, new BufferedInputStream(new FileInputStream(file)),
         md5Hash, file.length());
   }
@@ -247,10 +250,19 @@ class CosNativeFileSystemStore implements NativeFileSystemStore {
     }
   }
 
+  @Nullable
   public PartETag uploadPart(File file, String key, String uploadId,
       int partNum) throws IOException {
-    InputStream inputStream = new FileInputStream(file);
-    return uploadPart(inputStream, key, uploadId, partNum, file.length());
+    InputStream inputStream = null;
+    try {
+      inputStream = new FileInputStream(file);
+    }
+    finally {
+      if (inputStream != null) {
+        return uploadPart(inputStream, key, uploadId, partNum, file.length());
+      }
+    }
+    return null;
   }
 
   @Override

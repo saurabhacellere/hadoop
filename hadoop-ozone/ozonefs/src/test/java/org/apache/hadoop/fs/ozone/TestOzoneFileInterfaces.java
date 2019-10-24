@@ -88,15 +88,15 @@ public class TestOzoneFileInterfaces {
 
   private boolean useAbsolutePath;
 
-  private MiniOzoneCluster cluster = null;
+  private static MiniOzoneCluster cluster = null;
 
-  private FileSystem fs;
+  private static FileSystem fs;
 
-  private OzoneFileSystem o3fs;
+  private static OzoneFileSystem o3fs;
 
-  private String volumeName;
+  private static String volumeName;
 
-  private String bucketName;
+  private static String bucketName;
 
   private OzoneFSStorageStatistics statistics;
 
@@ -111,9 +111,6 @@ public class TestOzoneFileInterfaces {
 
   @Before
   public void init() throws Exception {
-    volumeName = RandomStringUtils.randomAlphabetic(10).toLowerCase();
-    bucketName = RandomStringUtils.randomAlphabetic(10).toLowerCase();
-
     OzoneConfiguration conf = new OzoneConfiguration();
     cluster = MiniOzoneCluster.newBuilder(conf)
         .setNumDatanodes(3)

@@ -20,7 +20,6 @@
 package org.apache.hadoop.fs.adl.live;
 
 import com.microsoft.azure.datalake.store.SSLSocketFactoryEx.SSLChannelMode;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.adl.AdlFileSystem;
 import org.junit.Assert;
@@ -78,31 +77,65 @@ public class TestAdlSdkConfiguration {
   }
 
   @Test
-  public void testSSLChannelModeConfig()
-      throws IOException, URISyntaxException {
-    testSSLChannelMode(SSLChannelMode.OpenSSL, "OpenSSL");
-    testSSLChannelMode(SSLChannelMode.Default_JSE, "Default_JSE");
-    testSSLChannelMode(SSLChannelMode.Default, "Default");
-    // If config set is invalid, SSL channel mode will be Default.
-    testSSLChannelMode(SSLChannelMode.Default, "Invalid");
-    // Config value is case insensitive.
-    testSSLChannelMode(SSLChannelMode.OpenSSL, "openssl");
-  }
-
-  public void testSSLChannelMode(SSLChannelMode expectedMode,
-      String sslChannelModeConfigValue) throws IOException, URISyntaxException {
-
+  public void testSSLChannelMode() throws IOException {
     AdlFileSystem fs = null;
     Configuration conf = null;
 
     conf = AdlStorageConfiguration.getConfiguration();
-    conf.set(ADL_SSL_CHANNEL_MODE, sslChannelModeConfigValue);
-    fs = (AdlFileSystem) (AdlStorageConfiguration.createStorageConnector(conf));
-    Assume.assumeNotNull(fs);
+    conf.set(ADL_SSL_CHANNEL_MODE, "OpenSSl");
+    try {
+      fs = (AdlFileSystem)
+          (AdlStorageConfiguration.createStorageConnector(conf));
+    } catch (URISyntaxException e) {
+      throw new IllegalStateException("ADL FileSystem initialization failed. "
+          + "Please check test.fs.adl.name property.", e);
+    }
 
     SSLChannelMode sslChannelMode = fs.getAdlClient().getSSLChannelMode();
-    Assert.assertEquals(
-        "Unexpected SSL Channel Mode for adl.ssl.channel.mode config value : "
-            + sslChannelModeConfigValue, expectedMode, sslChannelMode);
+    Assert.assertTrue("Channel mode needs to be OpenSSL",
+        sslChannelMode == SSLChannelMode.OpenSSL);
+
+    conf = AdlStorageConfiguration.getConfiguration();
+    conf.set(ADL_SSL_CHANNEL_MODE, "Default_JSE");
+    try {
+      fs = (AdlFileSystem)
+          (AdlStorageConfiguration.createStorageConnector(conf));
+    } catch (URISyntaxException e) {
+      throw new IllegalStateException("Can not initialize ADL FileSystem. "
+          + "Please check test.fs.adl.name property.", e);
+    }
+
+    sslChannelMode = fs.getAdlClient().getSSLChannelMode();
+    Assert.assertTrue("Channel mode needs to be Default_JSE",
+        sslChannelMode == SSLChannelMode.Default_JSE);
+
+    conf = AdlStorageConfiguration.getConfiguration();
+    conf.set(ADL_SSL_CHANNEL_MODE, "Default");
+    try {
+      fs = (AdlFileSystem)
+          (AdlStorageConfiguration.createStorageConnector(conf));
+    } catch (URISyntaxException e) {
+      throw new IllegalStateException("Can not initialize ADL FileSystem. "
+          + "Please check test.fs.adl.name property.", e);
+    }
+
+    sslChannelMode = fs.getAdlClient().getSSLChannelMode();
+    Assert.assertTrue("Channel mode needs to be Default",
+        sslChannelMode == SSLChannelMode.Default);
+
+    conf = AdlStorageConfiguration.getConfiguration();
+    conf.set(ADL_SSL_CHANNEL_MODE, "Invalid");
+    try {
+      fs = (AdlFileSystem)
+          (AdlStorageConfiguration.createStorageConnector(conf));
+    } catch (URISyntaxException e) {
+      throw new IllegalStateException("Can not initialize ADL FileSystem. "
+          + "Please check test.fs.adl.name property.", e);
+    }
+
+    sslChannelMode = fs.getAdlClient().getSSLChannelMode();
+    Assert.assertTrue("Channel mode needs to be Default when adl.ssl"
+            + ".channel.mode config is missing or is invalid",
+        sslChannelMode == SSLChannelMode.Default);
   }
 }

@@ -16,7 +16,7 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$DIR/../../.." || exit 1
 
-REPORT_DIR=${OUTPUT_DIR:-"$DIR/../../../target/acceptance"}
+REPORT_DIR=${OUTPUT_DIR:-"$DIR/../../../target"}
 mkdir -p "$REPORT_DIR"
 
 OZONE_VERSION=$(grep "<ozone.version>" "$DIR/../../pom.xml" | sed 's/<[^>]*>//g'|  sed 's/^[ \t]*//')
@@ -29,7 +29,6 @@ fi
 
 cd "$DIST_DIR/compose" || exit 1
 ./test-all.sh
-RES=$?
-cp result/* "$REPORT_DIR/"
+cp results/* "$REPORT_DIR/"
 cp "$REPORT_DIR/log.html" "$REPORT_DIR/summary.html"
-exit $RES
+exit $?
