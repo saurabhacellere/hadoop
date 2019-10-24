@@ -59,15 +59,13 @@ public final class RatisPipelineUtils {
   static void destroyPipeline(Pipeline pipeline, Configuration ozoneConf,
       GrpcTlsConfig grpcTlsConfig) {
     final RaftGroup group = RatisHelper.newRaftGroup(pipeline);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("destroying pipeline:{} with {}", pipeline.getId(), group);
-    }
+    LOG.debug("destroying pipeline:{} with {}", pipeline.getId(), group);
     for (DatanodeDetails dn : pipeline.getNodes()) {
       try {
         destroyPipeline(dn, pipeline.getId(), ozoneConf, grpcTlsConfig);
       } catch (IOException e) {
-        LOG.warn("Pipeline destroy failed for pipeline={} dn={}",
-            pipeline.getId(), dn);
+        LOG.warn("Pipeline destroy failed for pipeline={} dn={} exception={}",
+            pipeline.getId(), dn, e.getMessage());
       }
     }
   }

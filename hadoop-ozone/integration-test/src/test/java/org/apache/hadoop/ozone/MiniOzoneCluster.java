@@ -266,6 +266,7 @@ public interface MiniOzoneCluster {
     protected int numOfDatanodes = 1;
     protected boolean  startDataNodes = true;
     protected CertificateClient certClient;
+    protected int pipelineNumber = 3;
 
     protected Builder(OzoneConfiguration conf) {
       this.conf = conf;
@@ -349,6 +350,16 @@ public interface MiniOzoneCluster {
      */
     public Builder setNumDatanodes(int val) {
       numOfDatanodes = val;
+      return this;
+    }
+
+    /**
+     * Sets the total number of pipelines to create.
+     * @param val number of pipelines
+     * @return MiniOzoneCluster.Builder
+     */
+    public Builder setPipelineNumber(int val) {
+      pipelineNumber = val;
       return this;
     }
 

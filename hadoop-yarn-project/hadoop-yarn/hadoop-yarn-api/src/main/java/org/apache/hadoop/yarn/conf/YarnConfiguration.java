@@ -23,9 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
@@ -1481,12 +1479,6 @@ public class YarnConfiguration extends Configuration {
   public static final boolean DEFAULT_NM_REMOTE_APP_LOG_DIR_INCLUDE_OLDER =
       true;
 
-  /**
-   * Specifies the group of the aggregated log directory.
-   */
-  public static final String NM_REMOTE_APP_LOG_DIR_GROUPNAME =
-      NM_PREFIX + "remote-app-log-dir.groupname";
-
   public static final String YARN_LOG_SERVER_URL =
     YARN_PREFIX + "log.server.url";
 
@@ -2222,6 +2214,39 @@ public class YarnConfiguration extends Configuration {
 
   public static final String DEFAULT_NM_NONSECURE_MODE_USER_PATTERN = 
       "^[_.A-Za-z0-9][-@_.A-Za-z0-9]{0,255}?[$]?$";
+
+  /**
+   * Whether or not to use precreated pool of local users in secure mode.
+   */
+  public static final String NM_SECURE_MODE_USE_POOL_USER = NM_PREFIX +
+      "linux-container-executor.secure-mode.use-pool-user";
+
+  public static final boolean DEFAULT_NM_SECURE_MODE_USE_POOL_USER = false;
+
+  /**
+   * The number of pool local users. If set to -1, we'll take the value from:
+   * NM_PREFIX + "resource.cpu-vcores"
+   */
+  public static final String NM_SECURE_MODE_POOL_USER_COUNT = NM_PREFIX +
+      "linux-container-executor.secure-mode.pool-user-count";
+
+  public static final int DEFAULT_NM_SECURE_MODE_POOL_USER_COUNT = -1;
+
+  /**
+   * The prefix of the local pool users can be used by Yarn Secure Container.
+   * The number of local pool users to use is specified by:
+   *
+   * For example, if prefix is "user" and pool-user-count configured to 20,
+   * then local user names are:
+   *   user0
+   *   user1
+   *   ...
+   *   user19
+   */
+  public static final String NM_SECURE_MODE_POOL_USER_PREFIX = NM_PREFIX +
+      "linux-container-executor.secure-mode.pool-user-prefix";
+
+  public static final String DEFAULT_NM_SECURE_MODE_POOL_USER_PREFIX = "user";
 
   /** The type of resource enforcement to use with the
    *  linux container executor.
@@ -3791,26 +3816,6 @@ public class YarnConfiguration extends Configuration {
   public static final String DEFAULT_NODELABEL_CONFIGURATION_TYPE =
       CENTRALIZED_NODELABEL_CONFIGURATION_TYPE;
 
-  public static final String EXCLUSIVE_ENFORCED_PARTITIONS_SUFFIX
-      = "exclusive-enforced-partitions";
-
-  public static final String EXCLUSIVE_ENFORCED_PARTITIONS = NODE_LABELS_PREFIX
-      + EXCLUSIVE_ENFORCED_PARTITIONS_SUFFIX;
-
-  @Private
-  public static Set<String> getExclusiveEnforcedPartitions(
-      Configuration conf) {
-    Set<String> exclusiveEnforcedPartitions = new HashSet<>();
-    String[] configuredPartitions = conf.getStrings(
-        EXCLUSIVE_ENFORCED_PARTITIONS);
-    if (configuredPartitions != null) {
-      for (String partition : configuredPartitions) {
-        exclusiveEnforcedPartitions.add(partition);
-      }
-    }
-    return exclusiveEnforcedPartitions;
-  }
-
   public static final String MAX_CLUSTER_LEVEL_APPLICATION_PRIORITY =
       YARN_PREFIX + "cluster.max-application-priority";
 
@@ -4136,13 +4141,6 @@ public class YarnConfiguration extends Configuration {
    */
   public static final String NM_CONTAINERS_LAUNCHER_CLASS =
       NM_PREFIX + "containers-launcher.class";
-
-  // Configuration for the prefix of the tag which contains workflow ID,
-  // followed by the prefix.
-  public static final String YARN_WORKFLOW_ID_TAG_PREFIX =
-      YARN_PREFIX + "workflow-id.tag-prefix";
-  public static final String DEFAULT_YARN_WORKFLOW_ID_TAG_PREFIX =
-      "workflowid:";
 
   public YarnConfiguration() {
     super();

@@ -19,7 +19,6 @@
 package org.apache.hadoop.mapred;
 
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -193,7 +192,8 @@ public abstract class FileInputFormat<K, V> implements InputFormat<K, V> {
         if (stat.isDirectory()) {
           addInputPathRecursively(result, fs, stat.getPath(), inputFilter);
         } else {
-          result.add(stat);
+          result.add(org.apache.hadoop.mapreduce.lib.input.
+            FileInputFormat.shrinkStatus(stat));
         }
       }
     }
@@ -251,9 +251,7 @@ public abstract class FileInputFormat<K, V> implements InputFormat<K, V> {
             job, dirs, recursive, inputFilter, false);
         locatedFiles = locatedFileStatusFetcher.getFileStatuses();
       } catch (InterruptedException e) {
-        throw  (IOException)
-            new InterruptedIOException("Interrupted while getting file statuses")
-                .initCause(e);
+        throw new IOException("Interrupted while getting file statuses");
       }
       result = Iterables.toArray(locatedFiles, FileStatus.class);
     }
@@ -290,7 +288,8 @@ public abstract class FileInputFormat<K, V> implements InputFormat<K, V> {
                   addInputPathRecursively(result, fs, stat.getPath(),
                       inputFilter);
                 } else {
-                  result.add(stat);
+                  result.add(org.apache.hadoop.mapreduce.lib.input.
+                    FileInputFormat.shrinkStatus(stat));
                 }
               }
             }
