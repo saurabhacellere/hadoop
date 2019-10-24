@@ -21,9 +21,9 @@ package org.apache.hadoop.hdfs.server.datanode;
 import java.io.DataOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -125,7 +125,7 @@ public class VolumeScanner extends Thread {
    * Each block pool has its own BlockIterator.
    */
   private final List<BlockIterator> blockIters =
-      new ArrayList<BlockIterator>();
+      new LinkedList<BlockIterator>();
 
   /**
    * Blocks which are suspect.
@@ -290,7 +290,12 @@ public class VolumeScanner extends Thread {
         return;
       }
       LOG.warn("Reporting bad {} on {}", block, volume);
-      scanner.datanode.handleBadBlock(block, e, true);
+      try {
+        scanner.datanode.reportBadBlocks(block, volume);
+      } catch (IOException ie) {
+        // This is bad, but not bad enough to shut down the scanner.
+        LOG.warn("Cannot report bad block " + block, ie);
+      }
     }
   }
 
@@ -437,8 +442,7 @@ public class VolumeScanner extends Thread {
     BlockSender blockSender = null;
     try {
       blockSender = new BlockSender(block, 0, -1,
-          false, true, true, datanode, null,
-          CachingStrategy.newDropBehind());
+          false, true, true, datanode, null, CachingStrategy.newDropBehind());
       throttler.setBandwidth(bytesPerSec);
       long bytesRead = blockSender.sendBlock(nullStream, null, throttler);
       resultHandler.handle(block, null);
