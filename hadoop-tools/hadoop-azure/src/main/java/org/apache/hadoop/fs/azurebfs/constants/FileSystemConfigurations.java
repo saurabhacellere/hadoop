@@ -58,7 +58,6 @@ public final class FileSystemConfigurations {
   public static final int DEFAULT_READ_AHEAD_QUEUE_DEPTH = -1;
   public static final boolean DEFAULT_ENABLE_FLUSH = true;
   public static final boolean DEFAULT_ENABLE_AUTOTHROTTLING = true;
-  public static final boolean DEFAULT_ENABLE_ABFS_FLUSH = true;
 
   public static final SSLSocketFactoryEx.SSLChannelMode DEFAULT_FS_AZURE_SSL_CHANNEL_MODE
       = SSLSocketFactoryEx.SSLChannelMode.Default;
@@ -67,6 +66,8 @@ public final class FileSystemConfigurations {
   public static final boolean DEFAULT_ENABLE_HTTPS = true;
 
   public static final boolean DEFAULT_USE_UPN = false;
+
+  public static final boolean DEFAULT_ENABLE_CHECK_ACCESS = false;
 
   private FileSystemConfigurations() {}
 }

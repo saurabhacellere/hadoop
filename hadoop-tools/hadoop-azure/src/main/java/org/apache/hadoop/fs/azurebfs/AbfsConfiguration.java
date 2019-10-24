@@ -146,10 +146,6 @@ public class AbfsConfiguration{
       DefaultValue = DEFAULT_ENABLE_FLUSH)
   private boolean enableFlush;
 
-  @BooleanConfigurationValidatorAnnotation(ConfigurationKey =
-      FS_AZURE_ENABLE_ABFS_FLUSH, DefaultValue = DEFAULT_ENABLE_ABFS_FLUSH)
-  private boolean enableAbfsFlush;
-
   @BooleanConfigurationValidatorAnnotation(ConfigurationKey = FS_AZURE_ENABLE_AUTOTHROTTLING,
       DefaultValue = DEFAULT_ENABLE_AUTOTHROTTLING)
   private boolean enableAutoThrottling;
@@ -173,6 +169,10 @@ public class AbfsConfiguration{
   @BooleanConfigurationValidatorAnnotation(ConfigurationKey = FS_AZURE_USE_UPN,
       DefaultValue = DEFAULT_USE_UPN)
   private boolean useUpn;
+
+  @BooleanConfigurationValidatorAnnotation(ConfigurationKey =
+      FS_AZURE_ENABLE_CHECK_ACCESS, DefaultValue = DEFAULT_ENABLE_CHECK_ACCESS)
+  private boolean isCheckAccessEnabled;
 
   private Map<String, String> storageAccountKeys;
 
@@ -431,10 +431,6 @@ public class AbfsConfiguration{
     return this.enableFlush;
   }
 
-  public boolean isAbfsFlushEnabled() {
-    return this.enableAbfsFlush;
-  }
-
   public boolean isAutoThrottlingEnabled() {
     return this.enableAutoThrottling;
   }
@@ -465,6 +461,10 @@ public class AbfsConfiguration{
 
   public boolean isUpnUsed() {
     return this.useUpn;
+  }
+
+  public boolean isCheckAccessEnabled() {
+    return isCheckAccessEnabled;
   }
 
   public AccessTokenProvider getTokenProvider() throws TokenAccessProviderException {

@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Locale;
 
 import com.google.common.annotations.VisibleForTesting;
-import org.apache.hadoop.security.ssl.DelegatingSSLSocketFactory;
+import org.apache.hadoop.fs.azurebfs.utils.SSLSocketFactoryEx;
 import org.apache.hadoop.fs.azurebfs.constants.AbfsHttpConstants;
 import org.apache.hadoop.fs.azurebfs.constants.HttpHeaderConfigurations;
 import org.apache.hadoop.fs.azurebfs.constants.HttpQueryParams;
@@ -60,7 +60,6 @@ public class AbfsClient implements Closeable {
   private final String filesystem;
   private final AbfsConfiguration abfsConfiguration;
   private final String userAgent;
-  private final LatencyTracker latencyTracker;
 
   private final AccessTokenProvider tokenProvider;
 
@@ -68,8 +67,7 @@ public class AbfsClient implements Closeable {
   public AbfsClient(final URL baseUrl, final SharedKeyCredentials sharedKeyCredentials,
                     final AbfsConfiguration abfsConfiguration,
                     final ExponentialRetryPolicy exponentialRetryPolicy,
-                    final AccessTokenProvider tokenProvider,
-                    final LatencyTracker latencyTracker) {
+                    final AccessTokenProvider tokenProvider) {
     this.baseUrl = baseUrl;
     this.sharedKeyCredentials = sharedKeyCredentials;
     String baseUrlString = baseUrl.toString();
@@ -81,16 +79,15 @@ public class AbfsClient implements Closeable {
 
     if (this.baseUrl.toString().startsWith(HTTPS_SCHEME)) {
       try {
-        DelegatingSSLSocketFactory.initializeDefaultFactory(this.abfsConfiguration.getPreferredSSLFactoryOption());
-        sslProviderName = DelegatingSSLSocketFactory.getDefaultFactory().getProviderName();
+        SSLSocketFactoryEx.initializeDefaultFactory(this.abfsConfiguration.getPreferredSSLFactoryOption());
+        sslProviderName = SSLSocketFactoryEx.getDefaultFactory().getProviderName();
       } catch (IOException e) {
-        // Suppress exception. Failure to init DelegatingSSLSocketFactory would have only performance impact.
+        // Suppress exception. Failure to init SSLSocketFactoryEx would have only performance impact.
       }
     }
 
     this.userAgent = initializeUserAgent(abfsConfiguration, sslProviderName);
     this.tokenProvider = tokenProvider;
-    this.latencyTracker = latencyTracker;
   }
 
   @Override
@@ -102,10 +99,6 @@ public class AbfsClient implements Closeable {
 
   public String getFileSystem() {
     return filesystem;
-  }
-
-  protected LatencyTracker getLatencyTracker() {
-    return latencyTracker;
   }
 
   ExponentialRetryPolicy getRetryPolicy() {
@@ -520,6 +513,37 @@ public class AbfsClient implements Closeable {
         AbfsHttpConstants.HTTP_METHOD_HEAD,
         url,
         requestHeaders);
+    op.execute();
+    return op;
+  }
+
+  /**
+   * checks whether the calling user has the required permissions for the
+   * file/directory . The permissions
+   * to check should be specified in the rwx parameter, as a unix permission
+   * string
+   * (for example, {@code "r-x"}).
+   *
+   * @param path full pathname of file or directory to check access for
+   * @param rwx  the permission to check for, in rwx string form. The call
+   *             returns true if the caller has
+   *             all the requested permissions. For example, specifying
+   *             {@code "r-x"} succeeds if the caller has
+   *             read and execute permissions.
+   * @return true if the caller has the requested permissions, false otherwise
+   * @throws IOException {@link IOException} is thrown if there is an error
+   */
+  public AbfsRestOperation checkAccess(String path, String rwx)
+      throws IOException {
+    final AbfsUriQueryBuilder abfsUriQueryBuilder =
+        createDefaultUriQueryBuilder();
+    abfsUriQueryBuilder.addQuery(HttpQueryParams.QUERY_PARAM_ACTION,
+        AbfsHttpConstants.CHECK_ACCESS);
+    abfsUriQueryBuilder.addQuery(HttpQueryParams.QUERY_PARAM_FS_ACTION, rwx);
+    final URL url = createRequestUrl(path, abfsUriQueryBuilder.toString());
+    final AbfsRestOperation op = new AbfsRestOperation(
+        AbfsRestOperationType.CheckAccess, this,
+        AbfsHttpConstants.HTTP_METHOD_HEAD, url, createDefaultHeaders());
     op.execute();
     return op;
   }
