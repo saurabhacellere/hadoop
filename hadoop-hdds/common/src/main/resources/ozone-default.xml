@@ -1530,17 +1530,6 @@
   </property>
 
   <property>
-    <name>ozone.om.lock.fair</name>
-    <value>false</value>
-    <description>If this is true, the Ozone Manager lock will be used in Fair
-      mode, which will schedule threads in the order received/queued. If this is
-      false, uses non-fair ordering. See
-      java.util.concurrent.locks.ReentrantReadWriteLock
-      for more information on fair/non-fair locks.
-    </description>
-  </property>
-
-  <property>
     <name>ozone.om.ratis.enable</name>
     <value>false</value>
     <tag>OZONE, OM, RATIS, MANAGEMENT</tag>
@@ -1649,6 +1638,20 @@
     <value>1s</value>
     <tag>OZONE, OM, RATIS, MANAGEMENT</tag>
     <description>The minimum timeout duration for OM's Ratis server rpc.
+    </description>
+  </property>
+
+  <property>
+    <name>ozone.om.exception.stacktrace.propagate</name>
+    <value>true</value>
+    <tag>OZONE, OM, DEBUG</tag>
+    <description>
+      If true, propagate full stacktrace for system exceptions to the client.
+      If false, propagate summary message only and log stacktrace on server.
+      Full stacktrace on the client is useful for developers to debug
+      unexpected system errors encountered on the server while handling a
+      request.
+      This setting is not applicable for business exceptions.
     </description>
   </property>
 
