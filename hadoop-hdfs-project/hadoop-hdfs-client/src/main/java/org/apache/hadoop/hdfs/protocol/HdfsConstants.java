@@ -47,8 +47,14 @@ public final class HdfsConstants {
   public static final String WARM_STORAGE_POLICY_NAME = "WARM";
   public static final byte COLD_STORAGE_POLICY_ID = 2;
   public static final String COLD_STORAGE_POLICY_NAME = "COLD";
-  public static final byte PROVIDED_STORAGE_POLICY_ID = 1;
+  public static final byte PROVIDED_STORAGE_POLICY_ID = 3;
   public static final String PROVIDED_STORAGE_POLICY_NAME = "PROVIDED";
+  public static final byte DISK_PROVIDED_STORAGE_POLICY_ID = 6;
+  public static final String DISK_PROVIDED_STORAGE_POLICY_NAME = "DISK_PROVIDED";
+  public static final byte SSD_PROVIDED_STORAGE_POLICY_ID = 8;
+  public static final String SSD_PROVIDED_STORAGE_POLICY_NAME = "SSD_PROVIDED";
+  public static final byte PROVIDED_STORAGE_ONLY_POLICY_ID = 9;
+  public static final String PROVIDED_STORAGE_ONLY_POLICY_NAME = "PROVIDED_ONLY";
 
 
   public static final int DEFAULT_DATA_SOCKET_SIZE = 0;
@@ -92,11 +98,6 @@ public final class HdfsConstants {
    */
   public static final String CLIENT_NAMENODE_PROTOCOL_NAME =
       "org.apache.hadoop.hdfs.protocol.ClientProtocol";
-  /**
-   * Router admin Protocol Names.
-   */
-  public static final String ROUTER_ADMIN_PROTOCOL_NAME =
-      "org.apache.hadoop.hdfs.protocolPB.RouterAdminProtocol";
 
   // Timeouts for communicating with DataNode for streaming writes/reads
   public static final int READ_TIMEOUT = 60 * 1000;
