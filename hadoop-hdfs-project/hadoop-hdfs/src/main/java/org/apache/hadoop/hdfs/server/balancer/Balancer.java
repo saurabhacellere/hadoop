@@ -198,7 +198,9 @@ public class Balancer {
       + "\tWhether to run the balancer during an ongoing HDFS upgrade."
       + "This is usually not desired since it will not affect used space "
       + "on over-utilized machines."
-      + "\n\t[-asService]\tRun as a long running service.";
+      + "\n\t[-asService]\tRun as a long running service."
+      + "\n\t[-sourceThreshold]\t"
+      + "\tOnly Including nodes with utilization over a certain percentage as source nodes.";
 
   @VisibleForTesting
   private static volatile boolean serviceRunning = false;
@@ -214,6 +216,7 @@ public class Balancer {
   private final double threshold;
   private final long maxSizeToMove;
   private final long defaultBlockSize;
+  private final double sourceThreshold;
 
   // all data node lists
   private final Collection<Source> overUtilized = new LinkedList<Source>();
@@ -321,6 +324,7 @@ public class Balancer {
     this.policy = p.getBalancingPolicy();
     this.sourceNodes = p.getSourceNodes();
     this.runDuringUpgrade = p.getRunDuringUpgrade();
+    this.sourceThreshold = p.getSourceThreshold();
 
     this.maxSizeToMove = getLongBytes(conf,
         DFSConfigKeys.DFS_BALANCER_MAX_SIZE_TO_MOVE_KEY,
@@ -381,11 +385,19 @@ public class Balancer {
         }
         
         final double average = policy.getAvgUtilization(t);
-        if (utilization >= average && !isSource) {
-          LOG.info(dn + "[" + t + "] has utilization=" + utilization
-              + " >= average=" + average
-              + " but it is not specified as a source; skipping it.");
-          continue;
+        if (utilization >= average) {
+          if (!isSource) {
+            LOG.info(dn + "[" + t + "] has utilization=" + utilization
+                + " >= average=" + average
+                + " but it is not specified as a source; skipping it.");
+            continue;
+          }
+          if (utilization < sourceThreshold) {
+            LOG.info(dn + "[" + t + "] has utilization=" + utilization
+                + " < sourceThreshold=" + sourceThreshold
+                + "; skipping it.");
+            continue;
+          }
         }
 
         final double utilizationDiff = utilization - average;
@@ -932,6 +944,25 @@ public class Balancer {
               int maxIdleIteration = Integer.parseInt(args[i]);
               LOG.info("Using a idleiterations of " + maxIdleIteration);
               b.setMaxIdleIteration(maxIdleIteration);
+            } else if ("-sourceThreshold".equalsIgnoreCase(args[i])) {
+              checkArgument(++i < args.length,
+                  "Source threshold value is missing: args = " + Arrays
+                      .toString(args));
+              try {
+                double sourceThreshold = Double.parseDouble(args[i]);
+                if (sourceThreshold < 0 || sourceThreshold > 100) {
+                  throw new IllegalArgumentException(
+                      "Number out of range: sourceThreshold = " + sourceThreshold);
+                }
+                LOG.info("Selecting datanodes with utilization >= " + sourceThreshold + " as source." );
+                b.setSourceThreshold(sourceThreshold);
+              } catch (IllegalArgumentException e) {
+                System.err.println(
+                    "Expecting a number in the range of [0.0, 100.0]: "
+                        + args[i]);
+                throw e;
+              }
+
             } else if ("-runDuringUpgrade".equalsIgnoreCase(args[i])) {
               b.setRunDuringUpgrade(true);
               LOG.info("Will run the balancer even during an ongoing HDFS "

@@ -23,6 +23,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.apache.commons.collections.list.TreeList;
 import org.apache.hadoop.HadoopIllegalArgumentException;
+
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -31,7 +32,6 @@ import org.apache.hadoop.crypto.key.KeyProviderTokenIssuer;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.BlockStoragePolicySpi;
 import org.apache.hadoop.fs.CacheFlag;
-import org.apache.hadoop.fs.CommonPathCapabilities;
 import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -49,6 +49,7 @@ import org.apache.hadoop.fs.FsStatus;
 import org.apache.hadoop.fs.GlobalStorageStatistics;
 import org.apache.hadoop.fs.GlobalStorageStatistics.StorageStatisticsProvider;
 import org.apache.hadoop.fs.InvalidPathHandleException;
+import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.PathHandle;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Options;
@@ -68,11 +69,11 @@ import org.apache.hadoop.fs.permission.AclStatus;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DFSOpsCountStatistics.OpType;
-import org.apache.hadoop.hdfs.client.DfsPathCapabilities;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.hdfs.client.impl.CorruptFileBlockIterator;
 import org.apache.hadoop.hdfs.protocol.AddErasureCodingPolicyResponse;
+import org.apache.hadoop.hdfs.protocol.SyncMount;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveEntry;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveInfo;
@@ -81,6 +82,7 @@ import org.apache.hadoop.hdfs.protocol.CachePoolInfo;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.DirectoryListing;
+import org.apache.hadoop.hdfs.protocol.DisconnectPolicy;
 import org.apache.hadoop.hdfs.protocol.EncryptionZone;
 import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
 import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicyInfo;
@@ -122,8 +124,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.apache.hadoop.fs.impl.PathCapabilitiesSupport.validatePathCapabilityArgs;
-
 /****************************************************************
  * Implementation of the abstract FileSystem for the DFS system.
  * This object is the way end-user code interacts with a Hadoop
@@ -136,6 +136,8 @@ public class DistributedFileSystem extends FileSystem
     implements KeyProviderTokenIssuer {
   private Path workingDir;
   private URI uri;
+  private String homeDirPrefix =
+      HdfsClientConfigKeys.DFS_USER_HOME_DIR_PREFIX_DEFAULT;
 
   DFSClient dfs;
   private boolean verifyChecksum = true;
@@ -171,6 +173,9 @@ public class DistributedFileSystem extends FileSystem
     if (host == null) {
       throw new IOException("Incomplete HDFS URI, no host: "+ uri);
     }
+    homeDirPrefix = conf.get(
+        HdfsClientConfigKeys.DFS_USER_HOME_DIR_PREFIX_KEY,
+        HdfsClientConfigKeys.DFS_USER_HOME_DIR_PREFIX_DEFAULT);
 
     this.dfs = new DFSClient(uri, conf, statistics);
     this.uri = URI.create(uri.getScheme()+"://"+uri.getAuthority());
@@ -213,7 +218,8 @@ public class DistributedFileSystem extends FileSystem
 
   @Override
   public Path getHomeDirectory() {
-    return makeQualified(DFSUtilClient.getHomeDirectory(getConf(), dfs.ugi));
+    return makeQualified(new Path(homeDirPrefix + "/"
+        + dfs.ugi.getShortUserName()));
   }
 
   /**
@@ -554,7 +560,7 @@ public class DistributedFileSystem extends FileSystem
    * honored at the creation time only. And with favored nodes, blocks will be
    * pinned on the datanodes to prevent balancing move the block. HDFS could
    * move the blocks during replication, to move the blocks from favored nodes.
-   * A value of null means no favored nodes for this create.
+!   * A value of null means no favored nodes for this create.
    * The second addition is ecPolicyName. A non-null ecPolicyName specifies an
    * explicit erasure coding policy for this file, overriding the inherited
    * policy. A null ecPolicyName means the file will inherit its EC policy or
@@ -1004,7 +1010,6 @@ public class DistributedFileSystem extends FileSystem
    * @see org.apache.hadoop.hdfs.protocol.ClientProtocol#setQuota(String,
    * long, long, StorageType)
    */
-  @Override
   public void setQuota(Path src, final long namespaceQuota,
       final long storagespaceQuota) throws IOException {
     statistics.incrementWriteOps(1);
@@ -1034,7 +1039,6 @@ public class DistributedFileSystem extends FileSystem
    * @param quota value of the specific storage type quota to be modified.
    * Maybe {@link HdfsConstants#QUOTA_RESET} to clear quota by storage type.
    */
-  @Override
   public void setQuotaByStorageType(Path src, final StorageType type,
       final long quota)
       throws IOException {
@@ -3386,12 +3390,6 @@ public class DistributedFileSystem extends FileSystem
     return dfs.listOpenFiles();
   }
 
-  @Deprecated
-  public RemoteIterator<OpenFileEntry> listOpenFiles(
-      EnumSet<OpenFilesType> openFilesTypes) throws IOException {
-    return dfs.listOpenFiles(openFilesTypes);
-  }
-
   public RemoteIterator<OpenFileEntry> listOpenFiles(
       EnumSet<OpenFilesType> openFilesTypes, String path) throws IOException {
     return dfs.listOpenFiles(openFilesTypes, path);
@@ -3409,21 +3407,35 @@ public class DistributedFileSystem extends FileSystem
     return new HdfsDataOutputStreamBuilder(this, path).append();
   }
 
-  /**
-   * HDFS client capabilities.
-   * Uses {@link DfsPathCapabilities} to keep {@code WebHdfsFileSystem} in sync.
-   * {@inheritDoc}
-   */
-  @Override
-  public boolean hasPathCapability(final Path path, final String capability)
+  public String createSync(String name, String localPath,
+      String remoteLocation) throws IOException {
+    LocalFileSystem lfs = FileSystem.getLocal(getConf());
+
+    return dfs.createSync(name, localPath, remoteLocation);
+  }
+
+  public void removeSync(String name, DisconnectPolicy policy)
       throws IOException {
-    // qualify the path to make sure that it refers to the current FS.
-    final Path p = makeQualified(path);
-    Optional<Boolean> cap = DfsPathCapabilities.hasPathCapability(p,
-        capability);
-    if (cap.isPresent()) {
-      return cap.get();
-    }
-    return super.hasPathCapability(p, capability);
+    dfs.removeSync(name, policy);
+  }
+
+  public List<SyncMount> getSyncMounts() throws IOException {
+    return dfs.getSyncMounts();
+  }
+
+  public void pauseSync(String name) throws IOException {
+    dfs.pauseSync(name);
+  }
+
+  public void resumeSync(String name) throws IOException {
+    dfs.resumeSync(name);
+  }
+
+  public String getStatus(String syncMountName) throws IOException {
+    return dfs.getStatus(syncMountName);
+  }
+
+  public void fullResync(String name) throws IOException {
+    dfs.fullResync(name);
   }
 }
