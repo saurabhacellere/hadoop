@@ -20,8 +20,9 @@ package org.apache.hadoop.hdfs.server.datanode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.protobuf.ByteString;
-import javax.crypto.SecretKey;
+import com.google.protobuf.InvalidProtocolBufferException;
 import org.apache.commons.logging.Log;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
@@ -47,9 +48,12 @@ import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ReadOpChecksumIn
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ReleaseShortCircuitAccessResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCircuitShmResponseProto;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.Status;
+import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.BlockAliasProto;
+import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.FileRegionProto;
 import org.apache.hadoop.hdfs.protocolPB.PBHelperClient;
-import org.apache.hadoop.hdfs.security.token.block.BlockKey;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
+import org.apache.hadoop.hdfs.server.common.BlockAlias;
+import org.apache.hadoop.hdfs.server.common.FileRegion;
 import org.apache.hadoop.hdfs.server.datanode.BlockChecksumHelper.BlockChecksumComputer;
 import org.apache.hadoop.hdfs.server.datanode.BlockChecksumHelper.AbstractBlockChecksumComputer;
 import org.apache.hadoop.hdfs.server.datanode.BlockChecksumHelper.ReplicatedBlockChecksumComputer;
@@ -354,7 +358,7 @@ class DataXceiver extends Receiver implements Runnable {
     DataOutputStream out = getBufferedOutputStream();
     checkAccess(out, true, blk, token,
         Op.REQUEST_SHORT_CIRCUIT_FDS, BlockTokenIdentifier.AccessMode.READ,
-        null, null);
+        null, null, null);
     BlockOpResponseProto.Builder bld = BlockOpResponseProto.newBuilder();
     FileInputStream fis[] = null;
     SlotId registeredSlotId = null;
@@ -647,12 +651,6 @@ class DataXceiver extends Receiver implements Runnable {
             dnR, block, remoteAddress, ioe);
         incrDatanodeNetworkErrors();
       }
-      // Normally the client reports a bad block to the NN. However if the
-      // meta file is corrupt or an disk error occurs (EIO), then the client
-      // never gets a chance to do validation, and hence will never report
-      // the block as bad. For some classes of IO exception, the DN should
-      // report the block as bad, via the handleBadBlock() method
-      datanode.handleBadBlock(block, ioe, false);
       throw ioe;
     } finally {
       IOUtils.closeStream(blockSender);
@@ -682,7 +680,8 @@ class DataXceiver extends Receiver implements Runnable {
       final boolean pinning,
       final boolean[] targetPinnings,
       final String storageId,
-      final String[] targetStorageIds) throws IOException {
+      final String[] targetStorageIds,
+      final byte[] blockAlias) throws IOException {
     previousOpClientName = clientname;
     updateCurrentThreadName("Receiving block " + block);
     final boolean isDatanode = clientname.length() == 0;
@@ -716,7 +715,7 @@ class DataXceiver extends Receiver implements Runnable {
     }
     checkAccess(replyOut, isClient, block, blockToken, Op.WRITE_BLOCK,
         BlockTokenIdentifier.AccessMode.WRITE,
-        storageTypes, storageIds);
+        storageTypes, storageIds, blockAlias);
 
     // check single target for transfer-RBW/Finalized
     if (isTransfer && targets.length > 0) {
@@ -755,6 +754,7 @@ class DataXceiver extends Receiver implements Runnable {
     Status mirrorInStatus = SUCCESS;
     final String storageUuid;
     final boolean isOnTransientStorage;
+    final BlockAlias parsedBlockAlias = blockAliasFromProto(blockAlias);
     try {
       final Replica replica;
       if (isDatanode || 
@@ -765,7 +765,8 @@ class DataXceiver extends Receiver implements Runnable {
             peer.getLocalAddressString(),
             stage, latestGenerationStamp, minBytesRcvd, maxBytesRcvd,
             clientname, srcDataNode, datanode, requestedChecksum,
-            cachingStrategy, allowLazyPersist, pinning, storageId));
+            cachingStrategy, allowLazyPersist, pinning, storageId,
+            parsedBlockAlias));
         replica = blockReceiver.getReplica();
       } else {
         replica = datanode.data.recoverClose(
@@ -806,16 +807,8 @@ class DataXceiver extends Receiver implements Runnable {
           InputStream unbufMirrorIn = NetUtils.getInputStream(mirrorSock);
           DataEncryptionKeyFactory keyFactory =
             datanode.getDataEncryptionKeyFactoryForBlock(block);
-          SecretKey secretKey = null;
-          if (dnConf.overwriteDownstreamDerivedQOP) {
-            String bpid = block.getBlockPoolId();
-            BlockKey blockKey = datanode.blockPoolTokenSecretManager
-                .get(bpid).getCurrentKey();
-            secretKey = blockKey.getKey();
-          }
-          IOStreamPair saslStreams = datanode.saslClient.socketSend(
-              mirrorSock, unbufMirrorOut, unbufMirrorIn, keyFactory,
-              blockToken, targets[0], secretKey);
+          IOStreamPair saslStreams = datanode.saslClient.socketSend(mirrorSock,
+            unbufMirrorOut, unbufMirrorIn, keyFactory, blockToken, targets[0]);
           unbufMirrorOut = saslStreams.out;
           unbufMirrorIn = saslStreams.in;
           mirrorOut = new DataOutputStream(new BufferedOutputStream(unbufMirrorOut,
@@ -833,14 +826,14 @@ class DataXceiver extends Receiver implements Runnable {
                 srcDataNode, stage, pipelineSize, minBytesRcvd, maxBytesRcvd,
                 latestGenerationStamp, requestedChecksum, cachingStrategy,
                 allowLazyPersist, targetPinnings[0], targetPinnings,
-                targetStorageId, targetStorageIds);
+                targetStorageId, targetStorageIds, blockAlias);
           } else {
             new Sender(mirrorOut).writeBlock(originalBlock, targetStorageTypes[0],
                 blockToken, clientname, targets, targetStorageTypes,
                 srcDataNode, stage, pipelineSize, minBytesRcvd, maxBytesRcvd,
                 latestGenerationStamp, requestedChecksum, cachingStrategy,
                 allowLazyPersist, false, targetPinnings,
-                targetStorageId, targetStorageIds);
+                targetStorageId, targetStorageIds, blockAlias);
           }
 
           mirrorOut.flush();
@@ -905,8 +898,8 @@ class DataXceiver extends Receiver implements Runnable {
       // receive the block and mirror to the next target
       if (blockReceiver != null) {
         String mirrorAddr = (mirrorSock == null) ? null : mirrorNode;
-        blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut, mirrorAddr,
-            dataXceiverServer.getWriteThrottler(), targets, false);
+        blockReceiver.receiveBlock(mirrorOut, mirrorIn, replyOut,
+            mirrorAddr, null, targets, false);
 
         // send close-ack for transfer-RBW/Finalized 
         if (isTransfer) {
@@ -961,7 +954,8 @@ class DataXceiver extends Receiver implements Runnable {
       final String clientName,
       final DatanodeInfo[] targets,
       final StorageType[] targetStorageTypes,
-      final String[] targetStorageIds) throws IOException {
+      final String[] targetStorageIds,
+      final byte[] blockAlias) throws IOException {
     previousOpClientName = clientName;
     updateCurrentThreadName(Op.TRANSFER_BLOCK + " " + blk);
 
@@ -969,7 +963,7 @@ class DataXceiver extends Receiver implements Runnable {
         getOutputStream());
     checkAccess(out, true, blk, blockToken, Op.TRANSFER_BLOCK,
         BlockTokenIdentifier.AccessMode.COPY, targetStorageTypes,
-        targetStorageIds);
+        targetStorageIds, blockAlias);
     try {
       datanode.transferReplicaForPipelineRecovery(blk, targets,
           targetStorageTypes, targetStorageIds, clientName);
@@ -1124,12 +1118,6 @@ class DataXceiver extends Receiver implements Runnable {
       isOpSuccess = false;
       LOG.info("opCopyBlock {} received exception {}", block, ioe.toString());
       incrDatanodeNetworkErrors();
-      // Normally the client reports a bad block to the NN. However if the
-      // meta file is corrupt or an disk error occurs (EIO), then the client
-      // never gets a chance to do validation, and hence will never report
-      // the block as bad. For some classes of IO exception, the DN should
-      // report the block as bad, via the handleBadBlock() method
-      datanode.handleBadBlock(block, ioe, false);
       throw ioe;
     } finally {
       dataXceiverServer.balanceThrottler.release();
@@ -1160,7 +1148,7 @@ class DataXceiver extends Receiver implements Runnable {
     checkAccess(replyOut, true, block, blockToken,
         Op.REPLACE_BLOCK, BlockTokenIdentifier.AccessMode.REPLACE,
         new StorageType[]{storageType},
-        new String[]{storageId});
+        new String[]{storageId}, null);
 
     if (!dataXceiverServer.balanceThrottler.acquire()) { // not able to start
       String msg = "Not able to receive block " + block.getBlockId() +
@@ -1236,7 +1224,7 @@ class DataXceiver extends Receiver implements Runnable {
             proxyReply, proxySock.getRemoteSocketAddress().toString(),
             proxySock.getLocalSocketAddress().toString(),
             null, 0, 0, 0, "", null, datanode, remoteChecksum,
-            CachingStrategy.newDropBehind(), false, false, storageId));
+            CachingStrategy.newDropBehind(), false, false, storageId, null));
         
         // receive a block
         blockReceiver.receiveBlock(null, null, replyOut, null, 
@@ -1308,11 +1296,12 @@ class DataXceiver extends Receiver implements Runnable {
       CachingStrategy cachingStrategy,
       final boolean allowLazyPersist,
       final boolean pinning,
-      final String storageId) throws IOException {
+      final String storageId,
+      final BlockAlias blockAlias) throws IOException {
     return new BlockReceiver(block, storageType, in,
         inAddr, myAddr, stage, newGs, minBytesRcvd, maxBytesRcvd,
         clientname, srcDataNode, dn, requestedChecksum,
-        cachingStrategy, allowLazyPersist, pinning, storageId);
+        cachingStrategy, allowLazyPersist, pinning, storageId, blockAlias);
   }
 
   /**
@@ -1415,7 +1404,7 @@ class DataXceiver extends Receiver implements Runnable {
   private void checkAccess(OutputStream out, final boolean reply,
       ExtendedBlock blk, Token<BlockTokenIdentifier> t, Op op,
       BlockTokenIdentifier.AccessMode mode) throws IOException {
-    checkAccess(out, reply, blk, t, op, mode, null, null);
+    checkAccess(out, reply, blk, t, op, mode, null, null, null);
   }
 
   private void checkAccess(OutputStream out, final boolean reply,
@@ -1424,14 +1413,15 @@ class DataXceiver extends Receiver implements Runnable {
       final Op op,
       final BlockTokenIdentifier.AccessMode mode,
       final StorageType[] storageTypes,
-      final String[] storageIds) throws IOException {
+      final String[] storageIds,
+      final byte[] blockAlias) throws IOException {
     checkAndWaitForBP(blk);
     if (datanode.isBlockTokenEnabled) {
       LOG.debug("Checking block access token for block '{}' with mode '{}'",
           blk.getBlockId(), mode);
       try {
         datanode.blockPoolTokenSecretManager.checkAccess(t, null, blk, mode,
-            storageTypes, storageIds);
+            storageTypes, storageIds, blockAlias);
       } catch(InvalidToken e) {
         try {
           if (reply) {
@@ -1454,6 +1444,30 @@ class DataXceiver extends Receiver implements Runnable {
           IOUtils.closeStream(out);
         }
       }
+    }
+  }
+
+  private static BlockAlias blockAliasFromProto(byte[] blockAlias) {
+    if (blockAlias == null || blockAlias.length == 0){
+      return null;
+    }
+    final BlockAliasProto baProto;
+    try {
+      baProto = BlockAliasProto.parseFrom(blockAlias);
+    } catch (InvalidProtocolBufferException e) {
+      LOG.error("Could not parse BlockAlias from byte array");
+      return null;
+    }
+
+    switch(baProto.getType()) {
+    case FILE_REGION:
+      FileRegionProto frProto = baProto.getFileRegion();
+      return new FileRegion(frProto.getBlockId(),
+          new Path(frProto.getUri()), frProto.getOffset(),
+              frProto.getGenStamp(), frProto.getLength());
+    default:
+      LOG.error("Unknown BlockAlias type in parsed byte array");
+      return null;
     }
   }
 }

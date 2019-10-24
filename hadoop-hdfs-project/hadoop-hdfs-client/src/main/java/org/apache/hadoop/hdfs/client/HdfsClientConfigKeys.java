@@ -148,9 +148,10 @@ public interface HdfsClientConfigKeys {
           "dfs.client.key.provider.cache.expiry";
   long    DFS_CLIENT_KEY_PROVIDER_CACHE_EXPIRY_DEFAULT =
               TimeUnit.DAYS.toMillis(10); // 10 days
-  String DFS_CLIENT_BLOCK_READER_REMOTE_BUFFER_SIZE_KEY =
-      "dfs.client.block.reader.remote.buffer.size";
-  int DFS_CLIENT_BLOCK_READER_REMOTE_BUFFER_SIZE_DEFAULT = 8192;
+
+  String DFS_CLIENT_DEAD_NODE_DETECT_ENABLED_KEY =
+          "dfs.client.deadnode.detect.enabled";
+  boolean DFS_CLIENT_DEAD_NODE_DETECT_ENABLED_DEFAULT = false;
 
   String  DFS_DATANODE_KERBEROS_PRINCIPAL_KEY =
       "dfs.datanode.kerberos.principal";
@@ -310,6 +311,9 @@ public interface HdfsClientConfigKeys {
     String  EXCLUDE_NODES_CACHE_EXPIRY_INTERVAL_KEY =
         PREFIX + "exclude.nodes.cache.expiry.interval.millis";
     long    EXCLUDE_NODES_CACHE_EXPIRY_INTERVAL_DEFAULT = 10*MINUTE;
+    String RECOVER_ON_CLOSE_EXCEPTION_KEY =
+        PREFIX + "recover.on.close.exception";
+    boolean RECOVER_ON_CLOSE_EXCEPTION_DEFAULT = false;
 
     interface ByteArrayManager {
       String PREFIX = Write.PREFIX + "byte-array-manager.";
