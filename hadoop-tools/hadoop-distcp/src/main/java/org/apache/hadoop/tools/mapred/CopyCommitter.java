@@ -25,6 +25,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Trash;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
@@ -252,7 +253,7 @@ public class CopyCommitter extends FileOutputCommitter {
           // This is the last chunk of the splits, consolidate allChunkPaths
           try {
             concatFileChunks(conf, srcFileStatus.getPath(), targetFile,
-                allChunkPaths, srcFileStatus);
+                allChunkPaths);
           } catch (IOException e) {
             // If the concat failed because a chunk file doesn't exist,
             // then we assume that the CopyMapper has skipped copying this
@@ -458,7 +459,8 @@ public class CopyCommitter extends FileOutputCommitter {
         if (tracker.shouldDelete(trgtFileStatus)) {
           showProgress = true;
           try {
-            if (targetFS.delete(targetEntry, true)) {
+            boolean result = deletePath(targetFS, targetEntry, conf);
+            if (result) {
               // the delete worked. Unless the file is actually missing, this is the
               LOG.info("Deleted " + targetEntry + " - missing at source");
               deletedEntries++;
@@ -472,7 +474,8 @@ public class CopyCommitter extends FileOutputCommitter {
               // For all the filestores which implement the FS spec properly,
               // this means "the file wasn't there".
               // so track but don't worry about it.
-              LOG.info("delete({}) returned false ({})",
+              LOG.info("delete({}) returned false ({}). Consider using " +
+                      "-useTrash option if trash is enabled.",
                   targetEntry, trgtFileStatus);
               missingDeletes++;
             }
@@ -518,6 +521,17 @@ public class CopyCommitter extends FileOutputCommitter {
         formatDuration(deletionEnd - deletionStart));
     LOG.info("Total duration of deletion operation: {}",
         formatDuration(deletionEnd - listingStart));
+  }
+
+  private boolean deletePath(FileSystem targetFS, Path targetEntry,
+                             Configuration conf) throws IOException {
+    if (conf.getBoolean(DistCpConstants.CONF_LABEL_DELETE_MISSING_USETRASH,
+        false)) {
+      return Trash.moveToAppropriateTrash(
+          targetFS, targetEntry, conf);
+    } else {
+      return targetFS.delete(targetEntry, true);
+    }
   }
 
   /**
@@ -609,8 +623,7 @@ public class CopyCommitter extends FileOutputCommitter {
    * Concat the passed chunk files into one and rename it the targetFile.
    */
   private void concatFileChunks(Configuration conf, Path sourceFile,
-                                Path targetFile, LinkedList<Path> allChunkPaths,
-                                CopyListingFileStatus srcFileStatus)
+                                Path targetFile, LinkedList<Path> allChunkPaths)
       throws IOException {
     if (allChunkPaths.size() == 1) {
       return;
@@ -638,9 +651,8 @@ public class CopyCommitter extends FileOutputCommitter {
       LOG.debug("concat: result: " + dstfs.getFileStatus(firstChunkFile));
     }
     rename(dstfs, firstChunkFile, targetFile);
-    DistCpUtils.compareFileLengthsAndChecksums(srcFileStatus.getLen(),
-        srcfs, sourceFile, null, dstfs,
-            targetFile, skipCrc, srcFileStatus.getLen());
+    DistCpUtils.compareFileLengthsAndChecksums(
+        srcfs, sourceFile, null, dstfs, targetFile, skipCrc);
   }
 
   /**

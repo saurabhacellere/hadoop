@@ -17,8 +17,8 @@
  */
 package org.apache.hadoop.hdfs.server.datanode;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.timeout;
 
@@ -27,12 +27,14 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSTestUtil;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hdfs.MiniDFSNNTopology;
 import org.apache.hadoop.hdfs.client.BlockReportOptions;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocolPB.DatanodeProtocolClientSideTranslatorPB;
+import org.apache.hadoop.hdfs.server.protocol.BlockReportContext;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsDatasetSpi;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
@@ -50,7 +52,7 @@ import java.net.InetSocketAddress;
  */
 public final class TestTriggerBlockReport {
   private void testTriggerBlockReport(boolean incremental, boolean withSpecificNN) throws Exception {
-    Configuration conf = new HdfsConfiguration();
+    Configuration conf = new Configuration();
 
     // Set a really long value for dfs.blockreport.intervalMsec and
     // dfs.heartbeat.interval, so that incremental block reports and heartbeats
@@ -63,7 +65,7 @@ public final class TestTriggerBlockReport {
         new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(1).build();
     cluster.waitActive();
     cluster.transitionToActive(0);
-    FileSystem fs = cluster.getFileSystem(0);
+    DistributedFileSystem fs = cluster.getFileSystem(0);
     DatanodeProtocolClientSideTranslatorPB spyOnNn0 =
         InternalDataNodeTestUtils.spyOnBposToNN(
             cluster.getDataNodes().get(0), cluster.getNameNode(0));
@@ -90,7 +92,7 @@ public final class TestTriggerBlockReport {
           any(DatanodeRegistration.class),
           anyString(),
           any(StorageBlockReport[].class),
-          any());
+      Mockito.<BlockReportContext>anyObject());
       Mockito.verify(spyOnNn0, times(1)).blockReceivedAndDeleted(
           any(DatanodeRegistration.class),
           anyString(),
@@ -99,7 +101,7 @@ public final class TestTriggerBlockReport {
           any(DatanodeRegistration.class),
           anyString(),
           any(StorageBlockReport[].class),
-          any());
+          Mockito.<BlockReportContext>anyObject());
       Mockito.verify(spyOnNn1, times(1)).blockReceivedAndDeleted(
           any(DatanodeRegistration.class),
           anyString(),
@@ -149,13 +151,13 @@ public final class TestTriggerBlockReport {
           any(DatanodeRegistration.class),
           anyString(),
           any(StorageBlockReport[].class),
-          any());
+          any(BlockReportContext.class));
       int nn0BlockReport = withSpecificNN ? 0 : 1;
       Mockito.verify(spyOnNn0, timeout(60000).times(nn0BlockReport)).blockReport(
           any(DatanodeRegistration.class),
           anyString(),
           any(StorageBlockReport[].class),
-          any());
+          Mockito.<BlockReportContext>anyObject());
     }
 
     cluster.shutdown();

@@ -27,6 +27,7 @@ import org.apache.hadoop.metrics2.annotation.Metrics;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 import org.apache.hadoop.metrics2.lib.MutableCounterLong;
 
+import org.assertj.core.api.Assertions;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -119,6 +120,32 @@ public class TestPrometheusMetricsSink {
     Assert.assertEquals(
         "jvm_metrics_gc_count_g1_old_generation",
         sink.prometheusName(recordName, metricName));
+  }
+
+  @Test
+  public void testMoveNNTopMetricsNameToLabels() {
+    PrometheusMetricsSink sink = new PrometheusMetricsSink();
+    // op total metric
+    String recordName = "NNTopUserOpCounts.windowMs=100000";
+    String metricName = "op=liststatus.TotalCount";
+    StringBuilder builder = new StringBuilder();
+    sink.moveNNTopMetricsNameToLabels(builder, recordName, metricName);
+    Assertions.assertThat(builder.toString())
+        .isEqualTo(",window_ms=\"100000\",op=\"liststatus\"");
+
+    builder.setLength(0);
+
+    // op user metric
+    metricName = "op=*.user=alice.count";
+    sink.moveNNTopMetricsNameToLabels(builder, recordName, metricName);
+    Assertions.assertThat(builder.toString())
+        .isEqualTo(",window_ms=\"100000\",op=\"*\",user=\"alice\"");
+
+    builder.setLength(0);
+    metricName = "op=listStatus.user=alice.count";
+    sink.moveNNTopMetricsNameToLabels(builder, recordName, metricName);
+    Assertions.assertThat(builder.toString())
+        .isEqualTo(",window_ms=\"100000\",op=\"listStatus\",user=\"alice\"");
   }
 
   /**

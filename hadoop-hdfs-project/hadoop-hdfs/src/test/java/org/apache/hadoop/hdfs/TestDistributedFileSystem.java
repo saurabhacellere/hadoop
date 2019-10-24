@@ -79,7 +79,6 @@ import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.StorageStatistics.LongStatistic;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.fs.contract.ContractTestUtils;
-import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DistributedFileSystem.HdfsDataOutputStreamBuilder;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
@@ -91,7 +90,6 @@ import org.apache.hadoop.hdfs.protocol.CacheDirectiveInfo;
 import org.apache.hadoop.hdfs.protocol.CachePoolInfo;
 import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
-import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.RollingUpgradeAction;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.SafeModeAction;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.StoragePolicySatisfierMode;
@@ -1287,15 +1285,15 @@ public class TestDistributedFileSystem {
         //verify checksum
         final FileChecksum barcs = hdfs.getFileChecksum(bar);
         final int barhashcode = barcs.hashCode();
-        assertEquals(hdfsfoocs.hashCode(), barhashcode);
-        assertEquals(hdfsfoocs, barcs);
+        assertEquals(barhashcode, hdfsfoocs.hashCode());
+        assertEquals(barcs, hdfsfoocs);
 
         //webhdfs
-        assertEquals(webhdfsfoocs.hashCode(), barhashcode);
-        assertEquals(webhdfsfoocs, barcs);
+        assertEquals(barhashcode, webhdfsfoocs.hashCode());
+        assertEquals(barcs, webhdfsfoocs);
 
-        assertEquals(webhdfs_qfoocs.hashCode(), barhashcode);
-        assertEquals(webhdfs_qfoocs, barcs);
+        assertEquals(barhashcode, webhdfs_qfoocs.hashCode());
+        assertEquals(barcs, webhdfs_qfoocs);
       }
 
       hdfs.setPermission(dir, new FsPermission((short)0));
@@ -1492,7 +1490,7 @@ public class TestDistributedFileSystem {
       outputStream.close();
       assertEquals(StorageType.ARCHIVE, DFSTestUtil.getAllBlocks(fs, file1)
           .get(0).getStorageTypes()[0]);
-      assertEquals(fs.getStoragePolicy(file1).getName(), "COLD");
+      assertEquals("COLD", fs.getStoragePolicy(file1).getName());
 
       // Check with storage policy not specified.
       outputStream = fs.createFile(file2).build();
@@ -1500,7 +1498,7 @@ public class TestDistributedFileSystem {
       outputStream.close();
       assertEquals(StorageType.SSD, DFSTestUtil.getAllBlocks(fs, file2).get(0)
           .getStorageTypes()[0]);
-      assertEquals(fs.getStoragePolicy(file2).getName(), "ALL_SSD");
+      assertEquals("ALL_SSD", fs.getStoragePolicy(file2).getName());
 
       // Check with default storage policy.
       outputStream = fs.createFile(new Path("/default")).build();
@@ -1509,7 +1507,7 @@ public class TestDistributedFileSystem {
       assertEquals(StorageType.DISK,
           DFSTestUtil.getAllBlocks(fs, new Path("/default")).get(0)
               .getStorageTypes()[0]);
-      assertEquals(fs.getStoragePolicy(new Path("/default")).getName(), "HOT");
+      assertEquals("HOT", fs.getStoragePolicy(new Path("/default")).getName());
     }
   }
 
@@ -1878,34 +1876,6 @@ public class TestDistributedFileSystem {
               return null;
             }
           }));
-    }
-  }
-
-  @Test
-  public void testListingStoragePolicyNonSuperUser() throws Exception {
-    HdfsConfiguration conf = new HdfsConfiguration();
-    try (MiniDFSCluster cluster = new MiniDFSCluster.Builder(conf).build()) {
-      cluster.waitActive();
-      final DistributedFileSystem dfs = cluster.getFileSystem();
-      Path dir = new Path("/dir");
-      dfs.mkdirs(dir);
-      dfs.setPermission(dir,
-          new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL));
-
-      // Create a non-super user.
-      UserGroupInformation user = UserGroupInformation.createUserForTesting(
-          "Non_SuperUser", new String[] {"Non_SuperGroup"});
-
-      DistributedFileSystem userfs = (DistributedFileSystem) user.doAs(
-          (PrivilegedExceptionAction<FileSystem>) () -> FileSystem.get(conf));
-      Path sDir = new Path("/dir/sPolicy");
-      userfs.mkdirs(sDir);
-      userfs.setStoragePolicy(sDir, "COLD");
-      HdfsFileStatus[] list = userfs.getClient()
-          .listPaths(dir.toString(), HdfsFileStatus.EMPTY_NAME)
-          .getPartialListing();
-      assertEquals(HdfsConstants.COLD_STORAGE_POLICY_ID,
-          list[0].getStoragePolicy());
     }
   }
 

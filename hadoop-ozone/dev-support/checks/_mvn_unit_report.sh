@@ -14,71 +14,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-REPORT_DIR=${REPORT_DIR:-$PWD}
-
-_realpath() {
-  if realpath "$@" > /dev/null; then
-    realpath "$@"
-  else
-    local relative_to
-    relative_to=$(realpath "${1/--relative-to=/}") || return 1
-    realpath "$2" | sed -e "s@${relative_to}/@@"
-  fi
-}
-
 ## generate summary txt file
 find "." -name 'TEST*.xml' -print0 \
     | xargs -n1 -0 "grep" -l -E "<failure|<error" \
-    | awk -F/ '{sub("'"TEST-"'",""); sub(".xml",""); print $NF}' \
+    | awk -F/ '{sub("'"TEST-JUNIT_TEST_OUTPUT_DIR"'",""); sub(".xml",""); print $NF}' \
     | tee "$REPORT_DIR/summary.txt"
 
-#Copy heap dump and dump leftovers
-find "." -name "*.hprof" \
-    -or -name "*.dump" \
-    -or -name "*.dumpstream" \
-    -or -name "hs_err_*.log" \
-  -exec cp {} "$REPORT_DIR/" \;
 
-## Add the tests where the JVM is crashed
-grep -A1 'Crashed tests' "${REPORT_DIR}/output.log" \
-  | grep -v -e 'Crashed tests' -e '--' \
-  | cut -f2- -d' ' \
-  | sort -u >> "${REPORT_DIR}/summary.txt"
-
-## Check if Maven was killed
-if grep -q 'Killed.* mvn .* test ' "${REPORT_DIR}/output.log"; then
-  echo 'Maven test run was killed' >> "${REPORT_DIR}/summary.txt"
-fi
-
-#Collect of all of the report failes of FAILED tests
-while IFS= read -r -d '' dir; do
-   while IFS=$'\n' read -r file; do
-      DIR_OF_TESTFILE=$(dirname "$file")
-      NAME_OF_TESTFILE=$(basename "$file")
+#Collect of all of the FAILED results
+for dir in $(find "." -name surefire-reports); do
+   for file in $(grep -l -r FAILURE --include="*.txt" $dir | grep -v output.txt ); do
+      DIR_OF_TESTFILE=$(dirname $file)
+      NAME_OF_TESTFILE=$(basename $file)
       NAME_OF_TEST="${NAME_OF_TESTFILE%.*}"
-      DESTDIRNAME=$(_realpath --relative-to="$PWD" "$DIR_OF_TESTFILE/../..") || continue
+      DESTDIRNAME=$(realpath --relative-to="$PWD" $DIR_OF_TESTFILE/../..)
       mkdir -p "$REPORT_DIR/$DESTDIRNAME"
-      #shellcheck disable=SC2086
-      cp -r "$DIR_OF_TESTFILE"/*$NAME_OF_TEST* "$REPORT_DIR/$DESTDIRNAME/"
-   done < <(grep -l -r FAILURE --include="*.txt" "$dir" | grep -v output.txt)
-done < <(find "." -name surefire-reports -print0)
+      cp -r "$DIR_OF_TESTFILE/"*$NAME_OF_TEST* "$REPORT_DIR/$DESTDIRNAME/"
+   done
+done
 
 ## generate summary markdown file
 export SUMMARY_FILE="$REPORT_DIR/summary.md"
+printf "   Failing tests: \n\n" > "$SUMMARY_FILE"
 for TEST_RESULT_FILE in $(find "$REPORT_DIR" -name "*.txt" | grep -v output); do
 
-    FAILURES=$(grep FAILURE "$TEST_RESULT_FILE" | grep "Tests run" | awk '{print $18}' | sort | uniq)
+    FAILURES=$(cat $TEST_RESULT_FILE | grep FAILURE | grep "Tests run" | awk '{print $18}' | sort | uniq)
 
     for FAILURE in $FAILURES; do
-        TEST_RESULT_LOCATION="$(_realpath --relative-to="$REPORT_DIR" "$TEST_RESULT_FILE")"
-        TEST_OUTPUT_LOCATION="${TEST_RESULT_LOCATION//.txt/-output.txt}"
-        printf " * [%s](%s) ([output](%s))\n" "$FAILURE" "$TEST_RESULT_LOCATION" "$TEST_OUTPUT_LOCATION" >> "$SUMMARY_FILE"
+        printf "      $FAILURE\n" >> "$SUMMARY_FILE"
+        TEST_RESULT_LOCATION=$(realpath --relative-to=$REPORT_DIR $TEST_RESULT_FILE)
+        printf "            (result)[./$TEST_RESULT_LOCATION]\n\n" >> "$SUMMARY_FILE"
     done
 done
-
-if [ -s "$SUMMARY_FILE" ]; then
-   printf "# Failing tests: \n\n" | cat - "$SUMMARY_FILE" > temp && mv temp "$SUMMARY_FILE"
-fi
+printf "\n\n" >> "$SUMMARY_FILE"
 
 ## generate counter
 wc -l "$REPORT_DIR/summary.txt" | awk '{print $1}'> "$REPORT_DIR/failures"
