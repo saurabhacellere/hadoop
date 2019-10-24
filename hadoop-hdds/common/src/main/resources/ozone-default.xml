@@ -319,6 +319,15 @@
       defined with postfix (ns,ms,s,m,h,d)</description>
   </property>
   <property>
+    <name>hdds.command.status.report.interval</name>
+    <value>60000ms</value>
+    <tag>OZONE, CONTAINER, MANAGEMENT</tag>
+    <description>Time interval of the datanode to send status of command
+      execution. Each datanode periodically the execution status of commands
+      received from SCM to SCM. Unit could be defined with postfix
+      (ns,ms,s,m,h,d)</description>
+  </property>
+  <property>
     <name>hdds.pipeline.report.interval</name>
     <value>60000ms</value>
     <tag>OZONE, PIPELINE, MANAGEMENT</tag>
@@ -1305,7 +1314,7 @@
 
   <property>
     <name>hdds.scm.safemode.pipeline-availability.check</name>
-    <value>true</value>
+    <value>false</value>
     <tag>HDDS,SCM,OPERATION</tag>
     <description>
       Boolean value to enable pipeline availability check during SCM safe mode.
@@ -1387,25 +1396,6 @@
     <description>Temporary which is used during the container replication
       betweeen datanodes. Should have enough space to store multiple container
       (in compressed format), but doesn't require fast io access such as SSD.
-    </description>
-  </property>
-
-  <property>
-    <name>hdds.scm.safemode.pipeline.creation</name>
-    <value>true</value>
-    <tag>HDDS,SCM,OPERATION</tag>
-    <description>
-      Boolean value to enable background pipeline creation in SCM safe mode.
-    </description>
-  </property>
-
-  <property>
-    <name>hdds.scm.safemode.min.pipeline</name>
-    <value>1</value>
-    <tag>HDDS,SCM,OPERATION</tag>
-    <description>
-      Minimum RATIS pipeline number to exit SCM safe mode. Considered only when
-      "hdds.scm.safemode.pipeline.creation" is True.
     </description>
   </property>
 
@@ -1540,17 +1530,6 @@
   </property>
 
   <property>
-    <name>ozone.om.lock.fair</name>
-    <value>false</value>
-    <description>If this is true, the Ozone Manager lock will be used in Fair
-      mode, which will schedule threads in the order received/queued. If this is
-      false, uses non-fair ordering. See
-      java.util.concurrent.locks.ReentrantReadWriteLock
-      for more information on fair/non-fair locks.
-    </description>
-  </property>
-
-  <property>
     <name>ozone.om.ratis.enable</name>
     <value>false</value>
     <tag>OZONE, OM, RATIS, MANAGEMENT</tag>
@@ -1659,6 +1638,20 @@
     <value>1s</value>
     <tag>OZONE, OM, RATIS, MANAGEMENT</tag>
     <description>The minimum timeout duration for OM's Ratis server rpc.
+    </description>
+  </property>
+
+  <property>
+    <name>ozone.om.exception.stacktrace.propagate</name>
+    <value>true</value>
+    <tag>OZONE, OM, DEBUG</tag>
+    <description>
+      If true, propagate full stacktrace for system exceptions to the client.
+      If false, propagate summary message only and log stacktrace on server.
+      Full stacktrace on the client is useful for developers to debug
+      unexpected system errors encountered on the server while handling a
+      request.
+      This setting is not applicable for business exceptions.
     </description>
   </property>
 
