@@ -119,13 +119,10 @@ public class TestOzoneManagerConfiguration {
     String omNode1Id = "omNode1";
     String omNode2Id = "omNode2";
     String omNodesKeyValue = omNode1Id + "," + omNode2Id;
-    String serviceID = "service1";
-    conf.set(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, serviceID);
-    conf.set(OMConfigKeys.OZONE_OM_NODES_KEY + "." + serviceID,
-        omNodesKeyValue);
+    conf.set(OMConfigKeys.OZONE_OM_NODES_KEY, omNodesKeyValue);
 
-    String omNode1RpcAddrKey = getOMAddrKeyWithSuffix(serviceID, omNode1Id);
-    String omNode2RpcAddrKey = getOMAddrKeyWithSuffix(serviceID, omNode2Id);
+    String omNode1RpcAddrKey = getOMAddrKeyWithSuffix(null, omNode1Id);
+    String omNode2RpcAddrKey = getOMAddrKeyWithSuffix(null, omNode2Id);
 
     conf.set(omNode1RpcAddrKey, "0.0.0.0");
     conf.set(omNode2RpcAddrKey, "122.0.0.122");
@@ -280,6 +277,45 @@ public class TestOzoneManagerConfiguration {
           OMConfigKeys.OZONE_OM_ADDRESS_KEY + " address that matches local " +
           "node's address.", e);
     }
+  }
+
+  /**
+   * A configuration with an empty node list while service ID is configured
+   * Should successfully start with no NPEs.
+   * @throws Exception
+   */
+  @Test
+  public void testNoOMNodes() throws Exception {
+    String omServiceId = "om-service-test1";
+    conf.set(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, omServiceId);
+    // Deliberately skip OZONE_OM_NODES_KEY and OZONE_OM_ADDRESS_KEY config
+
+    // Should successfully start with no NPEs
+    startCluster();
+  }
+
+  /**
+   * A configuration with no OM addresses while service ID is configured.
+   * Should successfully start with no NPEs.
+   * @throws Exception
+   */
+  @Test
+  public void testNoOMAddrs() throws Exception {
+    String omServiceId = "om-service-test1";
+
+    String omNode1Id = "omNode1";
+    String omNode2Id = "omNode2";
+    String omNode3Id = "omNode3";
+    String omNodesKeyValue = omNode1Id + "," + omNode2Id + "," + omNode3Id;
+    String omNodesKey = OmUtils.addKeySuffixes(
+        OMConfigKeys.OZONE_OM_NODES_KEY, omServiceId);
+
+    conf.set(OMConfigKeys.OZONE_OM_SERVICE_IDS_KEY, omServiceId);
+    conf.set(omNodesKey, omNodesKeyValue);
+    // Deliberately skip OZONE_OM_ADDRESS_KEY config
+
+    // Should successfully start with no NPEs
+    startCluster();
   }
 
   /**

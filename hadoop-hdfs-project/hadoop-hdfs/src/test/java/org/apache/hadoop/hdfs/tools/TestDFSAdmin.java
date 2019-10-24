@@ -26,10 +26,9 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHEC
 import com.google.common.base.Supplier;
 import com.google.common.collect.Lists;
 
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.text.TextStringBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.lang.text.StrBuilder;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.ReconfigurationUtil;
 import org.apache.hadoop.fs.ChecksumException;
@@ -39,42 +38,28 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.DFSClient;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSTestUtil;
-import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
-import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
-import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
-import org.apache.hadoop.hdfs.protocol.LocatedStripedBlock;
-import org.apache.hadoop.hdfs.protocol.SystemErasureCodingPolicies;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManagerTestUtil;
 import org.apache.hadoop.hdfs.server.common.Storage;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.io.IOUtils;
-import org.apache.hadoop.ipc.RemoteException;
-import org.apache.hadoop.security.AccessControlException;
-import org.apache.hadoop.security.TestRefreshUserMappings;
-import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.authorize.DefaultImpersonationProvider;
 import org.apache.hadoop.test.GenericTestUtils;
 import org.apache.hadoop.test.PathUtils;
 import org.apache.hadoop.util.ToolRunner;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.Assert;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -91,7 +76,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.hamcrest.CoreMatchers.containsString;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -99,7 +84,7 @@ import static org.mockito.Mockito.when;
  * set/clrSpaceQuote are tested in {@link org.apache.hadoop.hdfs.TestQuota}.
  */
 public class TestDFSAdmin {
-  private static final Logger LOG = LoggerFactory.getLogger(TestDFSAdmin.class);
+  private static final Log LOG = LogFactory.getLog(TestDFSAdmin.class);
   private Configuration conf = null;
   private MiniDFSCluster cluster;
   private DFSAdmin admin;
@@ -109,19 +94,14 @@ public class TestDFSAdmin {
   private final ByteArrayOutputStream err = new ByteArrayOutputStream();
   private static final PrintStream OLD_OUT = System.out;
   private static final PrintStream OLD_ERR = System.err;
-  private String tempResource = null;
-  private static final int NUM_DATANODES = 2;
 
   @Before
   public void setUp() throws Exception {
     conf = new Configuration();
     conf.setInt(IPC_CLIENT_CONNECT_MAX_RETRIES_KEY, 3);
-    conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, 512);
-    conf.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR,
-        GenericTestUtils.getRandomizedTempPath());
     restartCluster();
 
-    admin = new DFSAdmin(conf);
+    admin = new DFSAdmin();
   }
 
   private void redirectStream() {
@@ -150,19 +130,13 @@ public class TestDFSAdmin {
     }
 
     resetStream();
-    if (tempResource != null) {
-      File f = new File(tempResource);
-      FileUtils.deleteQuietly(f);
-      tempResource = null;
-    }
   }
 
   private void restartCluster() throws IOException {
     if (cluster != null) {
       cluster.shutdown();
     }
-    cluster = new MiniDFSCluster.Builder(conf)
-        .numDataNodes(NUM_DATANODES).build();
+    cluster = new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
     cluster.waitActive();
     datanode = cluster.getDataNodes().get(0);
     namenode = cluster.getNameNode();
@@ -376,7 +350,7 @@ public class TestDFSAdmin {
         datanode.getConf());
     if (expectedSuccuss) {
       assertThat(locations.size(), is(1));
-      assertThat(new File(locations.get(0).getUri()), is(newDir));
+      assertThat(locations.get(0).getFile(), is(newDir));
       // Verify the directory is appropriately formatted.
       assertTrue(new File(newDir, Storage.STORAGE_DIR_CURRENT).isDirectory());
     } else {
@@ -393,14 +367,11 @@ public class TestDFSAdmin {
           containsString("FAILED: Change property " +
               DFS_DATANODE_DATA_DIR_KEY));
     }
-    File dnDir0 = cluster.getInstanceStorageDir(0, 0);
-    File dnDir1 = cluster.getInstanceStorageDir(0, 1);
-    assertThat(outs.get(offset + 1), is(allOf(containsString("From:"),
-                containsString(dnDir0.getName()),
-                containsString(dnDir1.getName()))));
+    assertThat(outs.get(offset + 1),
+        is(allOf(containsString("From:"), containsString("data1"),
+            containsString("data2"))));
     assertThat(outs.get(offset + 2),
-        is(not(anyOf(containsString(dnDir0.getName()),
-            containsString(dnDir1.getName())))));
+        is(not(anyOf(containsString("data1"), containsString("data2")))));
     assertThat(outs.get(offset + 2),
         is(allOf(containsString("To"), containsString("data_new"))));
   }
@@ -419,7 +390,7 @@ public class TestDFSAdmin {
     final List<String> outs = Lists.newArrayList();
     final List<String> errs = Lists.newArrayList();
     getReconfigurableProperties("namenode", address, outs, errs);
-    assertEquals(10, outs.size());
+    assertEquals(6, outs.size());
     assertEquals(DFS_HEARTBEAT_INTERVAL_KEY, outs.get(1));
     assertEquals(DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY, outs.get(2));
     assertEquals(errs.size(), 0);
@@ -543,7 +514,7 @@ public class TestDFSAdmin {
   }
 
   private static String scanIntoString(final ByteArrayOutputStream baos) {
-    final TextStringBuilder sb = new TextStringBuilder();
+    final StrBuilder sb = new StrBuilder();
     final Scanner scanner = new Scanner(baos.toString());
     while (scanner.hasNextLine()) {
       sb.appendln(scanner.nextLine());
@@ -552,45 +523,24 @@ public class TestDFSAdmin {
     return sb.toString();
   }
 
-  // get block details and check if the block is corrupt
-  private void waitForCorruptBlock(MiniDFSCluster miniCluster,
-      DFSClient client, Path file)
-      throws TimeoutException, InterruptedException {
-    GenericTestUtils.waitFor(new Supplier<Boolean>() {
-      @Override
-      public Boolean get() {
-        LocatedBlocks blocks = null;
-        try {
-          miniCluster.triggerBlockReports();
-          blocks = client.getNamenode().getBlockLocations(file.toString(), 0,
-              Long.MAX_VALUE);
-        } catch (IOException e) {
-          return false;
-        }
-        return blocks != null && blocks.get(0).isCorrupt();
-      }
-    }, 1000, 60000);
-  }
-
-  @Test(timeout = 180000)
+  @Test(timeout = 120000)
   public void testReportCommand() throws Exception {
-    tearDown();
     redirectStream();
 
-    // init conf
+    /* init conf */
     final Configuration dfsConf = new HdfsConfiguration();
-    ErasureCodingPolicy ecPolicy = SystemErasureCodingPolicies.getByID(
-        SystemErasureCodingPolicies.XOR_2_1_POLICY_ID);
     dfsConf.setInt(
-        DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY, 500);
+        DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,
+        500); // 0.5s
     dfsConf.setLong(DFS_HEARTBEAT_INTERVAL_KEY, 1);
     final Path baseDir = new Path(
         PathUtils.getTestDir(getClass()).getAbsolutePath(),
         GenericTestUtils.getMethodName());
     dfsConf.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, baseDir.toString());
-    final int numDn =
-        ecPolicy.getNumDataUnits() + ecPolicy.getNumParityUnits();
 
+    final int numDn = 3;
+
+    /* init cluster */
     try(MiniDFSCluster miniCluster = new MiniDFSCluster
         .Builder(dfsConf)
         .numDataNodes(numDn).build()) {
@@ -598,72 +548,34 @@ public class TestDFSAdmin {
       miniCluster.waitActive();
       assertEquals(numDn, miniCluster.getDataNodes().size());
 
+      /* local vars */
       final DFSAdmin dfsAdmin = new DFSAdmin(dfsConf);
       final DFSClient client = miniCluster.getFileSystem().getClient();
 
-      // Verify report command for all counts to be zero
+      /* run and verify report command */
       resetStream();
       assertEquals(0, ToolRunner.run(dfsAdmin, new String[] {"-report"}));
-      verifyNodesAndCorruptBlocks(numDn, numDn, 0, 0, client, 0L, 0L);
+      verifyNodesAndCorruptBlocks(numDn, numDn, 0, client);
 
+      /* shut down one DN */
+      final List<DataNode> datanodes = miniCluster.getDataNodes();
+      final DataNode last = datanodes.get(datanodes.size() - 1);
+      last.shutdown();
+      miniCluster.setDataNodeDead(last.getDatanodeId());
+
+      /* run and verify report command */
+      assertEquals(0, ToolRunner.run(dfsAdmin, new String[] {"-report"}));
+      verifyNodesAndCorruptBlocks(numDn, numDn - 1, 0, client);
+
+      /* corrupt one block */
       final short replFactor = 1;
       final long fileLength = 512L;
-      final DistributedFileSystem fs = miniCluster.getFileSystem();
+      final FileSystem fs = miniCluster.getFileSystem();
       final Path file = new Path(baseDir, "/corrupted");
-      fs.enableErasureCodingPolicy(ecPolicy.getName());
       DFSTestUtil.createFile(fs, file, fileLength, replFactor, 12345L);
       DFSTestUtil.waitReplication(fs, file, replFactor);
+
       final ExtendedBlock block = DFSTestUtil.getFirstBlock(fs, file);
-      LocatedBlocks lbs = miniCluster.getFileSystem().getClient().
-          getNamenode().getBlockLocations(
-          file.toString(), 0, fileLength);
-      assertTrue("Unexpected block type: " + lbs.get(0),
-          lbs.get(0) instanceof LocatedBlock);
-      LocatedBlock locatedBlock = lbs.get(0);
-      DatanodeInfo locatedDataNode = locatedBlock.getLocations()[0];
-      LOG.info("Replica block located on: " + locatedDataNode);
-
-      Path ecDir = new Path(baseDir, "ec");
-      fs.mkdirs(ecDir);
-      fs.getClient().setErasureCodingPolicy(ecDir.toString(),
-          ecPolicy.getName());
-      Path ecFile = new Path(ecDir, "ec-file");
-      int stripesPerBlock = 2;
-      int cellSize = ecPolicy.getCellSize();
-      int blockSize = stripesPerBlock * cellSize;
-      int blockGroupSize =  ecPolicy.getNumDataUnits() * blockSize;
-      int totalBlockGroups = 1;
-      DFSTestUtil.createStripedFile(miniCluster, ecFile, ecDir,
-          totalBlockGroups, stripesPerBlock, false, ecPolicy);
-
-      // Verify report command for all counts to be zero
-      resetStream();
-      assertEquals(0, ToolRunner.run(dfsAdmin, new String[] {"-report"}));
-      verifyNodesAndCorruptBlocks(numDn, numDn, 0, 0, client, 0L, 0L);
-
-      // Choose a DataNode to shutdown
-      final List<DataNode> datanodes = miniCluster.getDataNodes();
-      DataNode dataNodeToShutdown = null;
-      for (DataNode dn : datanodes) {
-        if (!dn.getDatanodeId().getDatanodeUuid().equals(
-            locatedDataNode.getDatanodeUuid())) {
-          dataNodeToShutdown = dn;
-          break;
-        }
-      }
-      assertTrue("Unable to choose a DataNode to shutdown!",
-          dataNodeToShutdown != null);
-
-      // Shut down the DataNode not hosting the replicated block
-      LOG.info("Shutting down: " + dataNodeToShutdown);
-      dataNodeToShutdown.shutdown();
-      miniCluster.setDataNodeDead(dataNodeToShutdown.getDatanodeId());
-
-      // Verify report command to show dead DataNode
-      assertEquals(0, ToolRunner.run(dfsAdmin, new String[] {"-report"}));
-      verifyNodesAndCorruptBlocks(numDn, numDn - 1, 0, 0, client, 0L, 1L);
-
-      // Corrupt the replicated block
       final int blockFilesCorrupted = miniCluster
           .corruptBlockOnDataNodes(block);
       assertEquals("Fail to corrupt all replicas for block " + block,
@@ -677,44 +589,35 @@ public class TestDFSAdmin {
         // expected exception reading corrupt blocks
       }
 
-      // Increase replication factor, this should invoke transfer request.
-      // Receiving datanode fails on checksum and reports it to namenode
+      /*
+       * Increase replication factor, this should invoke transfer request.
+       * Receiving datanode fails on checksum and reports it to namenode
+       */
       fs.setReplication(file, (short) (replFactor + 1));
 
-      // get block details and check if the block is corrupt
+      /* get block details and check if the block is corrupt */
+      GenericTestUtils.waitFor(new Supplier<Boolean>() {
+        @Override
+        public Boolean get() {
+          LocatedBlocks blocks = null;
+          try {
+            miniCluster.triggerBlockReports();
+            blocks = client.getNamenode().getBlockLocations(file.toString(), 0,
+                Long.MAX_VALUE);
+          } catch (IOException e) {
+            return false;
+          }
+          return blocks != null && blocks.get(0).isCorrupt();
+        }
+      }, 1000, 60000);
+
       BlockManagerTestUtil.updateState(
           miniCluster.getNameNode().getNamesystem().getBlockManager());
-      waitForCorruptBlock(miniCluster, client, file);
 
-      // verify report command for corrupt replicated block
+      /* run and verify report command */
       resetStream();
       assertEquals(0, ToolRunner.run(dfsAdmin, new String[] {"-report"}));
-      verifyNodesAndCorruptBlocks(numDn, numDn - 1, 1, 0, client, 0L, 1L);
-
-      lbs = miniCluster.getFileSystem().getClient().
-          getNamenode().getBlockLocations(
-          ecFile.toString(), 0, blockGroupSize);
-      assertTrue("Unexpected block type: " + lbs.get(0),
-          lbs.get(0) instanceof LocatedStripedBlock);
-      LocatedStripedBlock bg =
-          (LocatedStripedBlock)(lbs.get(0));
-
-      miniCluster.getNamesystem().writeLock();
-      try {
-        BlockManager bm = miniCluster.getNamesystem().getBlockManager();
-        bm.findAndMarkBlockAsCorrupt(bg.getBlock(), bg.getLocations()[0],
-            "STORAGE_ID", "TEST");
-        BlockManagerTestUtil.updateState(bm);
-      } finally {
-        miniCluster.getNamesystem().writeUnlock();
-      }
-      waitForCorruptBlock(miniCluster, client, file);
-
-      // verify report command for corrupt replicated block
-      // and EC block group
-      resetStream();
-      assertEquals(0, ToolRunner.run(dfsAdmin, new String[] {"-report"}));
-      verifyNodesAndCorruptBlocks(numDn, numDn - 1, 1, 1, client, 0L, 0L);
+      verifyNodesAndCorruptBlocks(numDn, numDn - 1, 1, client);
     }
   }
 
@@ -772,67 +675,6 @@ public class TestDFSAdmin {
             new String[]{"-listOpenFiles"}));
         verifyOpenFilesListing(closedFileSet, openFilesMap);
       }
-
-      // test -listOpenFiles command with option <path>
-      openFilesMap.clear();
-      Path file;
-      HashMap<Path, FSDataOutputStream> openFiles1 = new HashMap<>();
-      HashMap<Path, FSDataOutputStream> openFiles2 = new HashMap<>();
-      for (int i = 0; i < numOpenFiles; i++) {
-        if (i % 2 == 0) {
-          file = new Path(new Path("/tmp/files/a"), "open-file-" + i);
-        } else {
-          file = new Path(new Path("/tmp/files/b"), "open-file-" + i);
-        }
-
-        DFSTestUtil.createFile(fs, file, fileLength, replFactor, 12345L);
-        FSDataOutputStream outputStream = fs.append(file);
-
-        if (i % 2 == 0) {
-          openFiles1.put(file, outputStream);
-        } else {
-          openFiles2.put(file, outputStream);
-        }
-        openFilesMap.put(file, outputStream);
-      }
-
-      resetStream();
-      // list all open files
-      assertEquals(0,
-          ToolRunner.run(dfsAdmin, new String[] {"-listOpenFiles"}));
-      verifyOpenFilesListing(null, openFilesMap);
-
-      resetStream();
-      // list open files under directory path /tmp/files/a
-      assertEquals(0, ToolRunner.run(dfsAdmin,
-          new String[] {"-listOpenFiles", "-path", "/tmp/files/a"}));
-      verifyOpenFilesListing(null, openFiles1);
-
-      resetStream();
-      // list open files without input path
-      assertEquals(-1, ToolRunner.run(dfsAdmin,
-          new String[] {"-listOpenFiles", "-path"}));
-      // verify the error
-      String outStr = scanIntoString(err);
-      assertTrue(outStr.contains("listOpenFiles: option"
-          + " -path requires 1 argument"));
-
-      resetStream();
-      // list open files with empty path
-      assertEquals(0, ToolRunner.run(dfsAdmin,
-          new String[] {"-listOpenFiles", "-path", ""}));
-      // all the open files will be listed
-      verifyOpenFilesListing(null, openFilesMap);
-
-      resetStream();
-      // list invalid path file
-      assertEquals(0, ToolRunner.run(dfsAdmin,
-          new String[] {"-listOpenFiles", "-path", "/invalid_path"}));
-      outStr = scanIntoString(out);
-      for (Path openFilePath : openFilesMap.keySet()) {
-        assertThat(outStr, not(containsString(openFilePath.toString())));
-      }
-      DFSTestUtil.closeOpenFiles(openFilesMap, openFilesMap.size());
     }
   }
 
@@ -840,14 +682,10 @@ public class TestDFSAdmin {
       HashMap<Path, FSDataOutputStream> openFilesMap) {
     final String outStr = scanIntoString(out);
     LOG.info("dfsadmin -listOpenFiles output: \n" + out);
-    if (closedFileSet != null) {
-      for (Path closedFilePath : closedFileSet) {
-        assertThat(outStr,
-            not(containsString(closedFilePath.toString() +
-                System.lineSeparator())));
-      }
+    for (Path closedFilePath : closedFileSet) {
+      assertThat(outStr, not(containsString(closedFilePath.toString() +
+          System.lineSeparator())));
     }
-
     for (Path openFilePath : openFilesMap.keySet()) {
       assertThat(outStr, is(containsString(openFilePath.toString() +
           System.lineSeparator())));
@@ -858,11 +696,7 @@ public class TestDFSAdmin {
       final int numDn,
       final int numLiveDn,
       final int numCorruptBlocks,
-      final int numCorruptECBlockGroups,
-      final DFSClient client,
-      final Long highestPriorityLowRedundancyReplicatedBlocks,
-      final Long highestPriorityLowRedundancyECBlocks)
-      throws IOException {
+      final DFSClient client) throws IOException {
 
     /* init vars */
     final String outStr = scanIntoString(out);
@@ -872,26 +706,11 @@ public class TestDFSAdmin {
     final String expectedCorruptedBlocksStr = String.format(
         "Blocks with corrupt replicas: %d",
         numCorruptBlocks);
-    final String expectedCorruptedECBlockGroupsStr = String.format(
-        "Block groups with corrupt internal blocks: %d",
-        numCorruptECBlockGroups);
-    final String highestPriorityLowRedundancyReplicatedBlocksStr
-        = String.format(
-        "\tLow redundancy blocks with highest priority " +
-            "to recover: %d",
-        highestPriorityLowRedundancyReplicatedBlocks);
-    final String highestPriorityLowRedundancyECBlocksStr = String.format(
-        "\tLow redundancy blocks with highest priority " +
-            "to recover: %d",
-        highestPriorityLowRedundancyReplicatedBlocks);
 
-    // verify nodes and corrupt blocks
+    /* verify nodes and corrupt blocks */
     assertThat(outStr, is(allOf(
         containsString(expectedLiveNodesStr),
-        containsString(expectedCorruptedBlocksStr),
-        containsString(expectedCorruptedECBlockGroupsStr),
-        containsString(highestPriorityLowRedundancyReplicatedBlocksStr),
-        containsString(highestPriorityLowRedundancyECBlocksStr))));
+        containsString(expectedCorruptedBlocksStr))));
 
     assertEquals(
         numDn,
@@ -902,147 +721,6 @@ public class TestDFSAdmin {
     assertEquals(
         numDn - numLiveDn,
         client.getDatanodeStorageReport(DatanodeReportType.DEAD).length);
-    assertEquals(numCorruptBlocks + numCorruptECBlockGroups,
-        client.getCorruptBlocksCount());
-    assertEquals(numCorruptBlocks, client.getNamenode()
-        .getReplicatedBlockStats().getCorruptBlocks());
-    assertEquals(highestPriorityLowRedundancyReplicatedBlocks, client.getNamenode()
-        .getReplicatedBlockStats().getHighestPriorityLowRedundancyBlocks());
-    assertEquals(numCorruptECBlockGroups, client.getNamenode()
-        .getECBlockGroupStats().getCorruptBlockGroups());
-    assertEquals(highestPriorityLowRedundancyECBlocks, client.getNamenode()
-        .getECBlockGroupStats().getHighestPriorityLowRedundancyBlocks());
-  }
-
-  @Test
-  public void testSetBalancerBandwidth() throws Exception {
-    redirectStream();
-
-    final DFSAdmin dfsAdmin = new DFSAdmin(conf);
-    String outStr;
-
-    // Test basic case: 10000
-    assertEquals(0, ToolRunner.run(dfsAdmin,
-        new String[]{"-setBalancerBandwidth", "10000"}));
-    outStr = scanIntoString(out);
-    assertTrue("Did not set bandwidth!", outStr.contains("Balancer " +
-        "bandwidth is set to 10000"));
-
-    // Test parsing with units
-    resetStream();
-    assertEquals(0, ToolRunner.run(dfsAdmin,
-        new String[]{"-setBalancerBandwidth", "10m"}));
-    outStr = scanIntoString(out);
-    assertTrue("Did not set bandwidth!", outStr.contains("Balancer " +
-        "bandwidth is set to 10485760"));
-
-    resetStream();
-    assertEquals(0, ToolRunner.run(dfsAdmin,
-        new String[]{"-setBalancerBandwidth", "10k"}));
-    outStr = scanIntoString(out);
-    assertTrue("Did not set bandwidth!", outStr.contains("Balancer " +
-        "bandwidth is set to 10240"));
-
-    // Test negative numbers
-    assertEquals(-1, ToolRunner.run(dfsAdmin,
-        new String[]{"-setBalancerBandwidth", "-10000"}));
-    assertEquals(-1, ToolRunner.run(dfsAdmin,
-        new String[]{"-setBalancerBandwidth", "-10m"}));
-  }
-
-  @Test(timeout = 300000L)
-  public void testCheckNumOfBlocksInReportCommand() throws Exception {
-    DistributedFileSystem dfs = cluster.getFileSystem();
-    Path path = new Path("/tmp.txt");
-
-    DatanodeInfo[] dn = dfs.getDataNodeStats();
-    assertEquals(dn.length, NUM_DATANODES);
-    // Block count should be 0, as no files are created
-    int actualBlockCount = 0;
-    for (DatanodeInfo d : dn) {
-      actualBlockCount += d.getNumBlocks();
-    }
-    assertEquals(0, actualBlockCount);
-
-    // Create a file with 2 blocks
-    DFSTestUtil.createFile(dfs, path, 1024, (short) 1, 0);
-    int expectedBlockCount = 2;
-
-    // Wait for One Heartbeat
-    Thread.sleep(3 * 1000);
-
-    dn = dfs.getDataNodeStats();
-    assertEquals(dn.length, NUM_DATANODES);
-
-    // Block count should be 2, as file is created with block count 2
-    actualBlockCount = 0;
-    for (DatanodeInfo d : dn) {
-      actualBlockCount += d.getNumBlocks();
-    }
-    assertEquals(expectedBlockCount, actualBlockCount);
-  }
-
-  @Test
-  public void testRefreshProxyUser() throws Exception {
-    Path dirPath = new Path("/testdir1");
-    Path subDirPath = new Path("/testdir1/subdir1");
-    UserGroupInformation loginUserUgi =  UserGroupInformation.getLoginUser();
-    String proxyUser = "fakeuser";
-    String realUser = loginUserUgi.getShortUserName();
-
-    UserGroupInformation proxyUgi =
-        UserGroupInformation.createProxyUserForTesting(proxyUser,
-            loginUserUgi, loginUserUgi.getGroupNames());
-
-    // create a directory as login user and re-assign it to proxy user
-    loginUserUgi.doAs(new PrivilegedExceptionAction<Integer>() {
-      @Override
-      public Integer run() throws Exception {
-        cluster.getFileSystem().mkdirs(dirPath);
-        cluster.getFileSystem().setOwner(dirPath, proxyUser,
-            proxyUgi.getPrimaryGroupName());
-        return 0;
-      }
-    });
-
-    // try creating subdirectory inside the directory as proxy user,
-    // This should fail because of the current user hasn't still been proxied
-    try {
-      proxyUgi.doAs(new PrivilegedExceptionAction<Integer>() {
-        @Override public Integer run() throws Exception {
-          cluster.getFileSystem().mkdirs(subDirPath);
-          return 0;
-        }
-      });
-    } catch (RemoteException re) {
-      Assert.assertTrue(re.unwrapRemoteException()
-          instanceof AccessControlException);
-      Assert.assertTrue(re.unwrapRemoteException().getMessage()
-          .equals("User: " + realUser +
-              " is not allowed to impersonate " + proxyUser));
-    }
-
-    // refresh will look at configuration on the server side
-    // add additional resource with the new value
-    // so the server side will pick it up
-    String userKeyGroups = DefaultImpersonationProvider.getTestProvider().
-        getProxySuperuserGroupConfKey(realUser);
-    String userKeyHosts = DefaultImpersonationProvider.getTestProvider().
-        getProxySuperuserIpConfKey(realUser);
-    String rsrc = "testGroupMappingRefresh_rsrc.xml";
-    tempResource = TestRefreshUserMappings.addNewConfigResource(rsrc,
-        userKeyGroups, "*", userKeyHosts, "*");
-
-    String[] args = new String[]{"-refreshSuperUserGroupsConfiguration"};
-    admin.run(args);
-
-    // After proxying the fakeuser, the mkdir should work
-    proxyUgi.doAs(new PrivilegedExceptionAction<Integer>() {
-      @Override
-      public Integer run() throws Exception {
-        cluster.getFileSystem().mkdirs(dirPath);
-        return 0;
-      }
-    });
+    assertEquals(numCorruptBlocks, client.getCorruptBlocksCount());
   }
 }
