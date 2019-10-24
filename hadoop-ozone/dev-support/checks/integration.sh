@@ -19,12 +19,11 @@ cd "$DIR/../../.." || exit 1
 export MAVEN_OPTS="-Xmx4096m"
 mvn -B install -f pom.ozone.xml -DskipTests
 mvn -B -fn test -f pom.ozone.xml -pl :hadoop-ozone-integration-test,:hadoop-ozone-filesystem,:hadoop-ozone-tools \
-  -Dtest=\!TestMiniChaosOzoneCluster "$@"
+  -Dtest=\!TestMiniChaosOzoneCluster
 
-REPORT_DIR=${OUTPUT_DIR:-"$DIR/../../../target/integration"}
+REPORT_DIR=${OUTPUT_DIR:-"$DIR/../../../target"}
 mkdir -p "$REPORT_DIR"
 
-# shellcheck source=hadoop-ozone/dev-support/checks/_mvn_unit_report.sh
 source "$DIR/_mvn_unit_report.sh"
 
 if [[ -s "$REPORT_DIR/summary.txt" ]] ; then

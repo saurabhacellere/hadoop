@@ -149,9 +149,7 @@ public class OzoneManagerRequestHandler implements RequestHandler {
   @SuppressWarnings("methodlength")
   @Override
   public OMResponse handle(OMRequest request) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Received OMRequest: {}, ", request);
-    }
+    LOG.debug("Received OMRequest: {}, ", request);
     Type cmdType = request.getCmdType();
     OMResponse.Builder responseBuilder = OMResponse.newBuilder()
         .setCmdType(cmdType)
@@ -1047,6 +1045,7 @@ public class OzoneManagerRequestHandler implements RequestHandler {
         .setVolumeName(keyArgs.getVolumeName())
         .setBucketName(keyArgs.getBucketName())
         .setKeyName(keyArgs.getKeyName())
+        .setRefreshPipeline(keyArgs.getRefreshPipeline())
         .build();
 
     GetFileStatusResponse.Builder rb = GetFileStatusResponse.newBuilder();

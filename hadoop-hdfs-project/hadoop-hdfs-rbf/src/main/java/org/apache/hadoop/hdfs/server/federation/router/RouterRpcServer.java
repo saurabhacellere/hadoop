@@ -17,7 +17,6 @@
  */
 package org.apache.hadoop.hdfs.server.federation.router;
 
-import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION;
 import static org.apache.hadoop.hdfs.server.federation.router.RBFConfigKeys.DFS_ROUTER_HANDLER_COUNT_DEFAULT;
 import static org.apache.hadoop.hdfs.server.federation.router.RBFConfigKeys.DFS_ROUTER_HANDLER_COUNT_KEY;
 import static org.apache.hadoop.hdfs.server.federation.router.RBFConfigKeys.DFS_ROUTER_HANDLER_QUEUE_SIZE_DEFAULT;
@@ -30,7 +29,6 @@ import static org.apache.hadoop.hdfs.server.federation.router.RBFConfigKeys.DFS_
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.reflect.Array;
-import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -75,6 +73,7 @@ import org.apache.hadoop.hdfs.protocol.CorruptFileBlocks;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.DirectoryListing;
+import org.apache.hadoop.hdfs.protocol.DisconnectPolicy;
 import org.apache.hadoop.hdfs.protocol.ECBlockGroupStats;
 import org.apache.hadoop.hdfs.protocol.EncryptionZone;
 import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
@@ -96,6 +95,7 @@ import org.apache.hadoop.hdfs.protocol.RollingUpgradeInfo;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReportListing;
 import org.apache.hadoop.hdfs.protocol.SnapshottableDirectoryStatus;
+import org.apache.hadoop.hdfs.protocol.SyncMount;
 import org.apache.hadoop.hdfs.protocol.ZoneReencryptionStatus;
 import org.apache.hadoop.hdfs.protocol.proto.NamenodeProtocolProtos.NamenodeProtocolService;
 import org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.ClientNamenodeProtocol;
@@ -103,7 +103,6 @@ import org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB;
 import org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolServerSideTranslatorPB;
 import org.apache.hadoop.hdfs.protocolPB.NamenodeProtocolPB;
 import org.apache.hadoop.hdfs.protocolPB.NamenodeProtocolServerSideTranslatorPB;
-import org.apache.hadoop.hdfs.protocolPB.RouterPolicyProvider;
 import org.apache.hadoop.hdfs.security.token.block.DataEncryptionKey;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
 import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenIdentifier;
@@ -114,9 +113,7 @@ import org.apache.hadoop.hdfs.server.federation.resolver.FileSubclusterResolver;
 import org.apache.hadoop.hdfs.server.federation.resolver.MountTableResolver;
 import org.apache.hadoop.hdfs.server.federation.resolver.PathLocation;
 import org.apache.hadoop.hdfs.server.federation.resolver.RemoteLocation;
-import org.apache.hadoop.hdfs.server.federation.store.StateStoreUnavailableException;
 import org.apache.hadoop.hdfs.server.federation.store.records.MountTable;
-import org.apache.hadoop.hdfs.server.federation.router.security.RouterSecurityManager;
 import org.apache.hadoop.hdfs.server.namenode.CheckpointSignature;
 import org.apache.hadoop.hdfs.server.namenode.LeaseExpiredException;
 import org.apache.hadoop.hdfs.server.namenode.NameNode.OperationCategory;
@@ -135,21 +132,12 @@ import org.apache.hadoop.ipc.ProtobufRpcEngine;
 import org.apache.hadoop.ipc.RPC;
 import org.apache.hadoop.ipc.RPC.Server;
 import org.apache.hadoop.ipc.RemoteException;
-import org.apache.hadoop.ipc.RetriableException;
 import org.apache.hadoop.ipc.StandbyException;
 import org.apache.hadoop.net.NodeBase;
 import org.apache.hadoop.security.AccessControlException;
-import org.apache.hadoop.security.RefreshUserMappingsProtocol;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.proto.RefreshUserMappingsProtocolProtos;
-import org.apache.hadoop.security.protocolPB.RefreshUserMappingsProtocolPB;
-import org.apache.hadoop.security.protocolPB.RefreshUserMappingsProtocolServerSideTranslatorPB;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.service.AbstractService;
-import org.apache.hadoop.tools.GetUserMappingsProtocol;
-import org.apache.hadoop.tools.proto.GetUserMappingsProtocolProtos;
-import org.apache.hadoop.tools.protocolPB.GetUserMappingsProtocolPB;
-import org.apache.hadoop.tools.protocolPB.GetUserMappingsProtocolServerSideTranslatorPB;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -165,8 +153,8 @@ import com.google.protobuf.BlockingService;
  * the requests to the active
  * {@link org.apache.hadoop.hdfs.server.namenode.NameNode NameNode}.
  */
-public class RouterRpcServer extends AbstractService implements ClientProtocol,
-    NamenodeProtocol, RefreshUserMappingsProtocol, GetUserMappingsProtocol {
+public class RouterRpcServer extends AbstractService
+    implements ClientProtocol, NamenodeProtocol {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(RouterRpcServer.class);
@@ -189,9 +177,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
   /** Monitor metrics for the RPC calls. */
   private final RouterRpcMonitor rpcMonitor;
 
-  /** If we use authentication for the connections. */
-  private final boolean serviceAuthEnabled;
-
 
   /** Interface to identify the active NN for a nameservice or blockpool ID. */
   private final ActiveNamenodeResolver namenodeResolver;
@@ -209,13 +194,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
   private final RouterNamenodeProtocol nnProto;
   /** ClientProtocol calls. */
   private final RouterClientProtocol clientProto;
-  /** Other protocol calls. */
-  private final RouterUserProtocol routerProto;
-  /** Router security manager to handle token operations. */
-  private RouterSecurityManager securityManager = null;
-  /** Super user credentials that a thread may use. */
-  private static final ThreadLocal<UserGroupInformation> CUR_USER =
-      new ThreadLocal<>();
 
   /**
    * Construct a router RPC server.
@@ -267,18 +245,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     BlockingService nnPbService = NamenodeProtocolService
         .newReflectiveBlockingService(namenodeProtocolXlator);
 
-    RefreshUserMappingsProtocolServerSideTranslatorPB refreshUserMappingXlator =
-        new RefreshUserMappingsProtocolServerSideTranslatorPB(this);
-    BlockingService refreshUserMappingService =
-        RefreshUserMappingsProtocolProtos.RefreshUserMappingsProtocolService.
-        newReflectiveBlockingService(refreshUserMappingXlator);
-
-    GetUserMappingsProtocolServerSideTranslatorPB getUserMappingXlator =
-        new GetUserMappingsProtocolServerSideTranslatorPB(this);
-    BlockingService getUserMappingService =
-        GetUserMappingsProtocolProtos.GetUserMappingsProtocolService.
-        newReflectiveBlockingService(getUserMappingXlator);
-
     InetSocketAddress confRpcAddress = conf.getSocketAddr(
         RBFConfigKeys.DFS_ROUTER_RPC_BIND_HOST_KEY,
         RBFConfigKeys.DFS_ROUTER_RPC_ADDRESS_KEY,
@@ -286,9 +252,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
         RBFConfigKeys.DFS_ROUTER_RPC_PORT_DEFAULT);
     LOG.info("RPC server binding to {} with {} handlers for Router {}",
         confRpcAddress, handlerCount, this.router.getRouterId());
-
-    // Create security manager
-    this.securityManager = new RouterSecurityManager(this.conf);
 
     this.rpcServer = new RPC.Builder(this.conf)
         .setProtocol(ClientNamenodeProtocolPB.class)
@@ -299,23 +262,11 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
         .setnumReaders(readerCount)
         .setQueueSizePerHandler(handlerQueueSize)
         .setVerbose(false)
-        .setSecretManager(this.securityManager.getSecretManager())
         .build();
 
     // Add all the RPC protocols that the Router implements
     DFSUtil.addPBProtocol(
         conf, NamenodeProtocolPB.class, nnPbService, this.rpcServer);
-    DFSUtil.addPBProtocol(conf, RefreshUserMappingsProtocolPB.class,
-        refreshUserMappingService, this.rpcServer);
-    DFSUtil.addPBProtocol(conf, GetUserMappingsProtocolPB.class,
-        getUserMappingService, this.rpcServer);
-
-    // Set service-level authorization security policy
-    this.serviceAuthEnabled = conf.getBoolean(
-        HADOOP_SECURITY_AUTHORIZATION, false);
-    if (this.serviceAuthEnabled) {
-      rpcServer.refreshServiceAcl(conf, new RouterPolicyProvider());
-    }
 
     // We don't want the server to log the full stack trace for some exceptions
     this.rpcServer.addTerseExceptions(
@@ -326,9 +277,7 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
         AccessControlException.class,
         LeaseExpiredException.class,
         NotReplicatedYetException.class,
-        IOException.class,
-        ConnectException.class,
-        RetriableException.class);
+        IOException.class);
 
     this.rpcServer.addSuppressedLoggingExceptions(
         StandbyException.class);
@@ -338,17 +287,12 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     this.rpcAddress = new InetSocketAddress(
         confRpcAddress.getHostName(), listenAddress.getPort());
 
-    if (conf.getBoolean(RBFConfigKeys.DFS_ROUTER_METRICS_ENABLE,
-        RBFConfigKeys.DFS_ROUTER_METRICS_ENABLE_DEFAULT)) {
-      // Create metrics monitor
-      Class<? extends RouterRpcMonitor> rpcMonitorClass = this.conf.getClass(
-          RBFConfigKeys.DFS_ROUTER_METRICS_CLASS,
-          RBFConfigKeys.DFS_ROUTER_METRICS_CLASS_DEFAULT,
-          RouterRpcMonitor.class);
-      this.rpcMonitor = ReflectionUtils.newInstance(rpcMonitorClass, conf);
-    } else {
-      this.rpcMonitor = null;
-    }
+    // Create metrics monitor
+    Class<? extends RouterRpcMonitor> rpcMonitorClass = this.conf.getClass(
+        RBFConfigKeys.DFS_ROUTER_METRICS_CLASS,
+        RBFConfigKeys.DFS_ROUTER_METRICS_CLASS_DEFAULT,
+        RouterRpcMonitor.class);
+    this.rpcMonitor = ReflectionUtils.newInstance(rpcMonitorClass, conf);
 
     // Create the client
     this.rpcClient = new RouterRpcClient(this.conf, this.router,
@@ -358,7 +302,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     this.quotaCall = new Quota(this.router, this);
     this.nnProto = new RouterNamenodeProtocol(this);
     this.clientProto = new RouterClientProtocol(conf, this);
-    this.routerProto = new RouterUserProtocol(this);
   }
 
   @Override
@@ -366,7 +309,7 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     this.conf = configuration;
 
     if (this.rpcMonitor == null) {
-      LOG.info("Do not start Router RPC metrics");
+      LOG.error("Cannot instantiate Router RPC metrics class");
     } else {
       this.rpcMonitor.init(this.conf, this, this.router.getStateStore());
     }
@@ -391,19 +334,7 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     if (rpcMonitor != null) {
       this.rpcMonitor.close();
     }
-    if (securityManager != null) {
-      this.securityManager.stop();
-    }
     super.serviceStop();
-  }
-
-  /**
-   * Get the RPC security manager.
-   *
-   * @return RPC security manager.
-   */
-  public RouterSecurityManager getRouterSecurityManager() {
-    return this.securityManager;
   }
 
   /**
@@ -511,26 +442,17 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     // Store the category of the operation category for this thread
     opCategory.set(op);
 
-    // We allow unchecked and read operations to try, fail later
+    // We allow unchecked and read operations
     if (op == OperationCategory.UNCHECKED || op == OperationCategory.READ) {
       return;
     }
-    checkSafeMode();
-  }
 
-  /**
-   * Check if the Router is in safe mode.
-   * @throws StandbyException If the Router is in safe mode and cannot serve
-   *                          client requests.
-   */
-  private void checkSafeMode() throws StandbyException {
     RouterSafemodeService safemodeService = router.getSafemodeService();
     if (safemodeService != null && safemodeService.isInSafeMode()) {
       // Throw standby exception, router is not available
       if (rpcMonitor != null) {
         rpcMonitor.routerFailureSafemode();
       }
-      OperationCategory op = opCategory.get();
       throw new StandbyException("Router " + router.getRouterId() +
           " is in safe mode and cannot handle " + op + " requests");
     }
@@ -545,29 +467,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     final StackTraceElement[] stack = Thread.currentThread().getStackTrace();
     String methodName = stack[3].getMethodName();
     return methodName;
-  }
-
-  /**
-   * Invokes the method at default namespace, if default namespace is not
-   * available then at the first available namespace.
-   * @param <T> expected return type.
-   * @param method the remote method.
-   * @return the response received after invoking method.
-   * @throws IOException
-   */
-  <T> T invokeAtAvailableNs(RemoteMethod method, Class<T> clazz)
-      throws IOException {
-    String nsId = subclusterResolver.getDefaultNamespace();
-    if (!nsId.isEmpty()) {
-      return rpcClient.invokeSingle(nsId, method, clazz);
-    }
-    // If default Ns is not present return result from first namespace.
-    Set<FederationNamespaceInfo> nss = namenodeResolver.getNamespaces();
-    if (nss.isEmpty()) {
-      throw new IOException("No namespace available.");
-    }
-    nsId = nss.iterator().next().getNameserviceId();
-    return rpcClient.invokeSingle(nsId, method, clazz);
   }
 
   @Override // ClientProtocol
@@ -610,7 +509,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
         replication, blockSize, supportedVersions, ecPolicyName, storagePolicy);
   }
 
-
   /**
    * Get the location to create a file. It checks if the file already existed
    * in one of the locations.
@@ -619,24 +517,10 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
    * @return The remote location for this file.
    * @throws IOException If the file has no creation location.
    */
-  RemoteLocation getCreateLocation(final String src) throws IOException {
-    final List<RemoteLocation> locations = getLocationsForPath(src, true);
-    return getCreateLocation(src, locations);
-  }
-
-  /**
-   * Get the location to create a file. It checks if the file already existed
-   * in one of the locations.
-   *
-   * @param src Path of the file to check.
-   * @param locations Prefetched locations for the file.
-   * @return The remote location for this file.
-   * @throws IOException If the file has no creation location.
-   */
-  RemoteLocation getCreateLocation(
-      final String src, final List<RemoteLocation> locations)
+  RemoteLocation getCreateLocation(final String src)
       throws IOException {
 
+    final List<RemoteLocation> locations = getLocationsForPath(src, true);
     if (locations == null || locations.isEmpty()) {
       throw new IOException("Cannot get locations to create " + src);
     }
@@ -644,38 +528,34 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     RemoteLocation createLocation = locations.get(0);
     if (locations.size() > 1) {
       try {
-        RemoteLocation existingLocation = getExistingLocation(src, locations);
-        // Forward to the existing location and let the NN handle the error
+        // Check if this file already exists in other subclusters
+        LocatedBlocks existingLocation = getBlockLocations(src, 0, 1);
         if (existingLocation != null) {
-          LOG.debug("{} already exists in {}.", src, existingLocation);
-          createLocation = existingLocation;
+          // Forward to the existing location and let the NN handle the error
+          LocatedBlock existingLocationLastLocatedBlock =
+              existingLocation.getLastLocatedBlock();
+          if (existingLocationLastLocatedBlock == null) {
+            // The block has no blocks yet, check for the meta data
+            for (RemoteLocation location : locations) {
+              RemoteMethod method = new RemoteMethod("getFileInfo",
+                  new Class<?>[] {String.class}, new RemoteParam());
+              if (rpcClient.invokeSingle(location, method) != null) {
+                createLocation = location;
+                break;
+              }
+            }
+          } else {
+            ExtendedBlock existingLocationLastBlock =
+                existingLocationLastLocatedBlock.getBlock();
+            String blockPoolId = existingLocationLastBlock.getBlockPoolId();
+            createLocation = getLocationForPath(src, true, blockPoolId);
+          }
         }
       } catch (FileNotFoundException fne) {
         // Ignore if the file is not found
       }
     }
     return createLocation;
-  }
-
-  /**
-   * Gets the remote location where the file exists.
-   * @param src the name of file.
-   * @param locations all the remote locations.
-   * @return the remote location of the file if it exists, else null.
-   * @throws IOException in case of any exception.
-   */
-  private RemoteLocation getExistingLocation(String src,
-      List<RemoteLocation> locations) throws IOException {
-    RemoteMethod method = new RemoteMethod("getFileInfo",
-        new Class<?>[] {String.class}, new RemoteParam());
-    Map<RemoteLocation, HdfsFileStatus> results = rpcClient.invokeConcurrent(
-        locations, method, false, false, HdfsFileStatus.class);
-    for (RemoteLocation loc : locations) {
-      if (results.get(loc) != null) {
-        return loc;
-      }
-    }
-    return null;
   }
 
   @Override // ClientProtocol
@@ -1020,12 +900,12 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     return clientProto.getLinkTarget(path);
   }
 
-  @Override // ClientProtocol
+  @Override // Client Protocol
   public void allowSnapshot(String snapshotRoot) throws IOException {
     clientProto.allowSnapshot(snapshotRoot);
   }
 
-  @Override // ClientProtocol
+  @Override // Client Protocol
   public void disallowSnapshot(String snapshot) throws IOException {
     clientProto.disallowSnapshot(snapshot);
   }
@@ -1036,7 +916,7 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     clientProto.renameSnapshot(snapshotRoot, snapshotOldName, snapshotNewName);
   }
 
-  @Override // ClientProtocol
+  @Override // Client Protocol
   public SnapshottableDirectoryStatus[] getSnapshottableDirListing()
       throws IOException {
     return clientProto.getSnapshottableDirListing();
@@ -1409,6 +1289,48 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
     return nnProto.getNextSPSPath();
   }
 
+  @Override
+  public String createSync(String name, String localBackupPath,
+      String remoteBackupPath) throws IOException {
+    // Probably want an administrative OperationCategory check here.
+    throw new UnsupportedOperationException("createSync is not supported");
+  }
+
+  @Override
+  public void removeSync(String name, DisconnectPolicy policy)
+      throws IOException {
+    // Probably want an administrative OperationCategory check here.
+    throw new UnsupportedOperationException("removeSync is not supported");
+  }
+
+  @Override
+  public String getStatus(String syncMountName) throws IOException {
+    throw new UnsupportedOperationException("getStatus is not supported");
+  }
+
+  @Override
+  public List<SyncMount> getSyncMounts() throws IOException {
+    throw new UnsupportedOperationException("getSyncMounts is not supported");
+  }
+
+  @Override
+  public void pauseSync(String name) throws IOException {
+    // Probably want an administrative OperationCategory check here.
+    throw new UnsupportedOperationException("pauseSync is not supported");
+  }
+
+  @Override
+  public void resumeSync(String name) throws IOException {
+    // Probably want an administrative OperationCategory check here.
+    throw new UnsupportedOperationException("resumeSync is not supported");
+  }
+
+  @Override
+  public boolean fullResync(String name) throws IOException {
+    // Probably want an administrative OperationCategory check here.
+    throw new UnsupportedOperationException("fullResyncis not supported");
+  }
+
   /**
    * Locate the location with the matching block pool id.
    *
@@ -1463,8 +1385,7 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
    * Get the possible locations of a path in the federated cluster.
    *
    * @param path Path to check.
-   * @param failIfLocked Fail the request if there is any mount point under
-   *                     the path.
+   * @param failIfLocked Fail the request if locked (top mount point).
    * @param needQuotaVerify If need to do the quota verification.
    * @return Prioritized list of locations in the federated cluster.
    * @throws IOException If the location for this path cannot be determined.
@@ -1472,27 +1393,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
   protected List<RemoteLocation> getLocationsForPath(String path,
       boolean failIfLocked, boolean needQuotaVerify) throws IOException {
     try {
-      if (failIfLocked) {
-        // check if there is any mount point under the path
-        final List<String> mountPoints =
-            this.subclusterResolver.getMountPoints(path);
-        if (mountPoints != null) {
-          StringBuilder sb = new StringBuilder();
-          sb.append("The operation is not allowed because ");
-          if (mountPoints.isEmpty()) {
-            sb.append("the path: ")
-                .append(path)
-                .append(" is a mount point");
-          } else {
-            sb.append("there are mount points: ")
-                .append(String.join(",", mountPoints))
-                .append(" under the path: ")
-                .append(path);
-          }
-          throw new AccessControlException(sb.toString());
-        }
-      }
-
       // Check the location for this path
       final PathLocation location =
           this.subclusterResolver.getDestinationForPath(path);
@@ -1535,9 +1435,6 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
       if (this.rpcMonitor != null) {
         this.rpcMonitor.routerFailureStateStore();
       }
-      if (ioe instanceof StateStoreUnavailableException) {
-        checkSafeMode();
-      }
       throw ioe;
     }
   }
@@ -1569,24 +1466,9 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
    * @return Remote user group information.
    * @throws IOException If we cannot get the user information.
    */
-  public static UserGroupInformation getRemoteUser() throws IOException {
-    UserGroupInformation ugi = CUR_USER.get();
-    ugi = (ugi != null) ? ugi : Server.getRemoteUser();
+  static UserGroupInformation getRemoteUser() throws IOException {
+    UserGroupInformation ugi = Server.getRemoteUser();
     return (ugi != null) ? ugi : UserGroupInformation.getCurrentUser();
-  }
-
-  /**
-   * Set super user credentials if needed.
-   */
-  static void setCurrentUser(UserGroupInformation ugi) {
-    CUR_USER.set(ugi);
-  }
-
-  /**
-   * Reset to discard super user credentials.
-   */
-  static void resetCurrentUser() {
-    CUR_USER.set(null);
   }
 
   /**
@@ -1597,16 +1479,14 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
    * @param clazz Class of the values.
    * @return Array with the outputs.
    */
-  static <T> T[] merge(
+  protected static <T> T[] merge(
       Map<FederationNamespaceInfo, T[]> map, Class<T> clazz) {
 
     // Put all results into a set to avoid repeats
     Set<T> ret = new LinkedHashSet<>();
     for (T[] values : map.values()) {
-      if (values != null) {
-        for (T val : values) {
-          ret.add(val);
-        }
+      for (T val : values) {
+        ret.add(val);
       }
     }
 
@@ -1620,7 +1500,7 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
    * @param clazz Class of the values.
    * @return Array with the values in set.
    */
-  static <T> T[] toArray(Collection<T> set, Class<T> clazz) {
+  private static <T> T[] toArray(Collection<T> set, Class<T> clazz) {
     @SuppressWarnings("unchecked")
     T[] combinedData = (T[]) Array.newInstance(clazz, set.size());
     combinedData = set.toArray(combinedData);
@@ -1636,99 +1516,10 @@ public class RouterRpcServer extends AbstractService implements ClientProtocol,
   }
 
   /**
-   * Get ClientProtocol module implementation.
-   * @return ClientProtocol implementation
-   */
-  @VisibleForTesting
-  public RouterClientProtocol getClientProtocolModule() {
-    return this.clientProto;
-  }
-
-  /**
    * Get RPC metrics info.
    * @return The instance of FederationRPCMetrics.
    */
   public FederationRPCMetrics getRPCMetrics() {
     return this.rpcMonitor.getRPCMetrics();
-  }
-
-  /**
-   * Check if a path should be in all subclusters.
-   *
-   * @param path Path to check.
-   * @return If a path should be in all subclusters.
-   */
-  boolean isPathAll(final String path) {
-    if (subclusterResolver instanceof MountTableResolver) {
-      try {
-        MountTableResolver mountTable = (MountTableResolver) subclusterResolver;
-        MountTable entry = mountTable.getMountPoint(path);
-        if (entry != null) {
-          return entry.isAll();
-        }
-      } catch (IOException e) {
-        LOG.error("Cannot get mount point", e);
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Check if a path supports failed subclusters.
-   *
-   * @param path Path to check.
-   * @return If a path should support failed subclusters.
-   */
-  boolean isPathFaultTolerant(final String path) {
-    if (subclusterResolver instanceof MountTableResolver) {
-      try {
-        MountTableResolver mountTable = (MountTableResolver) subclusterResolver;
-        MountTable entry = mountTable.getMountPoint(path);
-        if (entry != null) {
-          return entry.isFaultTolerant();
-        }
-      } catch (IOException e) {
-        LOG.error("Cannot get mount point", e);
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Check if call needs to be invoked to all the locations. The call is
-   * supposed to be invoked in all the locations in case the order of the mount
-   * entry is amongst HASH_ALL, RANDOM or SPACE or if the source is itself a
-   * mount entry.
-   * @param path The path on which the operation need to be invoked.
-   * @return true if the call is supposed to invoked on all locations.
-   * @throws IOException
-   */
-  boolean isInvokeConcurrent(final String path) throws IOException {
-    if (subclusterResolver instanceof MountTableResolver) {
-      MountTableResolver mountTableResolver =
-          (MountTableResolver) subclusterResolver;
-      List<String> mountPoints = mountTableResolver.getMountPoints(path);
-      // If this is a mount point, we need to invoke everywhere.
-      if (mountPoints != null) {
-        return true;
-      }
-      return isPathAll(path);
-    }
-    return false;
-  }
-
-  @Override
-  public void refreshUserToGroupsMappings() throws IOException {
-    routerProto.refreshUserToGroupsMappings();
-  }
-
-  @Override
-  public void refreshSuperUserGroupsConfiguration() throws IOException {
-    routerProto.refreshSuperUserGroupsConfiguration();
-  }
-
-  @Override
-  public String[] getGroupsForUser(String user) throws IOException {
-    return routerProto.getGroupsForUser(user);
   }
 }
