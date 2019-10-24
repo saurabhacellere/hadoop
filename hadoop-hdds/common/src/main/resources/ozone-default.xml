@@ -331,7 +331,7 @@
 
   <property>
     <name>hdds.prometheus.endpoint.enabled</name>
-    <value>true</value>
+    <value>false</value>
     <tag>OZONE, MANAGEMENT</tag>
     <description>Enable prometheus compatible metric page on the HTTP
       servers.
@@ -823,11 +823,9 @@
     </value>
     <tag>OZONE, MANAGEMENT</tag>
     <description>
-      The full name of class which implements
-      org.apache.hadoop.hdds.scm.PlacementPolicy.
+      The full name of class which implements org.apache.hadoop.hdds.scm.container.placement.algorithms.ContainerPlacementPolicy.
       The class decides which datanode will be used to host the container replica. If not set,
-      org.apache.hadoop.hdds.scm.container.placement.algorithms.SCMContainerPlacementRandom will be used as default
-      value.
+      org.apache.hadoop.hdds.scm.container.placement.algorithms.SCMContainerPlacementRandom will be used as default value.
     </description>
   </property>
   <property>
@@ -835,20 +833,6 @@
     <value>3</value>
     <tag>OZONE, SCM, PIPELINE</tag>
     <description>Number of containers per owner in a pipeline.
-    </description>
-  </property>
-  <property>
-  <name>ozone.scm.datanode.max.pipeline.engagement</name>
-  <value>0</value>
-  <tag>OZONE, SCM, PIPELINE</tag>
-  <description>Max number of pipelines per datanode can be engaged in.
-  </description>
-  </property>
-  <property>
-    <name>ozone.scm.datanode.pipeline.number.limit</name>
-    <value>0</value>
-    <tag>OZONE, SCM, PIPELINE</tag>
-    <description>Upper limit for how many pipelines can be created in SCM.
     </description>
   </property>
   <property>
@@ -1074,6 +1058,39 @@
     <description>
       Setting this flag to true dumps the HTTP request/ response in
       the logs. Very useful when debugging REST protocol.
+    </description>
+  </property>
+
+  <!--Client Settings-->
+  <property>
+    <name>scm.container.client.idle.threshold</name>
+    <value>10s</value>
+    <tag>OZONE, PERFORMANCE</tag>
+    <description>
+      In the standalone pipelines, the SCM clients use netty to
+      communicate with the container. It also uses connection pooling to
+      reduce client side overheads. This allows a connection to stay idle for
+      a while before the connection is closed.
+    </description>
+  </property>
+  <property>
+    <name>scm.container.client.max.size</name>
+    <value>256</value>
+    <tag>OZONE, PERFORMANCE</tag>
+    <description>
+      Controls the maximum number of connections that we cached via
+      clientconnection pooling. If the number of connection
+      exceed this count then the oldest idle connection is evicted.
+    </description>
+  </property>
+
+  <property>
+    <name>scm.container.client.max.outstanding.requests</name>
+    <value>100</value>
+    <tag>OZONE, PERFORMANCE</tag>
+    <description>
+      Controls the maximum number of outstanding async requests that can be
+      handled by the Standalone as well as Ratis client.
     </description>
   </property>
 
@@ -1350,7 +1367,7 @@
   </property>
 
   <property>
-    <name>hdds.container.scrub.enabled</name>
+    <name>hdds.containerscrub.enabled</name>
     <value>false</value>
     <tag>DATANODE</tag>
     <description>
@@ -1854,10 +1871,37 @@
     <description>HDDS GRPC server TLS provider.</description>
   </property>
   <property>
+    <name>hdds.client.cert.chain.file.name</name>
+    <value>client.crt</value>
+    <tag>OZONE, HDDS, SECURITY</tag>
+    <description>Client certificate file name. It is an optional
+      field only required when mutual TLS (hdds.grpc.mutual.tls.required)
+      is set to true .</description>
+  </property>
+  <property>
+    <name>hdds.grpc.mutual.tls.required</name>
+    <value>false</value>
+    <tag>OZONE, HDDS, SECURITY, TLS</tag>
+    <description>If mutual tls check is enabled for GRPC.
+    Considered only if hdds.grpc.tls.enabled is set to true.</description>
+  </property>
+  <property>
     <name>hdds.grpc.tls.enabled</name>
     <value>false</value>
     <tag>OZONE, HDDS, SECURITY, TLS</tag>
     <description>If HDDS GRPC server TLS is enabled.</description>
+  </property>
+  <property>
+    <name>hdds.server.cert.chain.file.name</name>
+    <value>server.crt</value>
+    <tag>OZONE, HDDS, SECURITY</tag>
+    <description>Hdds server certificate file name.</description>
+  </property>
+  <property>
+    <name>hdds.trust.cert.collection.file.name</name>
+    <value>ca.crt</value>
+    <tag>OZONE, HDDS, SECURITY</tag>
+    <description>HDDS Certificate Authority trust store file name.</description>
   </property>
   <property>
     <name>hdds.x509.default.duration</name>

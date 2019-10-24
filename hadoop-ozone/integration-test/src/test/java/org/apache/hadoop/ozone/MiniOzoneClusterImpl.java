@@ -19,8 +19,6 @@ package org.apache.hadoop.ozone;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.commons.io.FileUtils;
@@ -128,11 +126,6 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
 
   public OzoneConfiguration getConf() {
     return conf;
-  }
-
-  public String getServiceId() {
-    // Non-HA cluster doesn't have OM Service Id.
-    return null;
   }
 
   /**
@@ -319,7 +312,6 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
       stop();
       FileUtils.deleteDirectory(baseDir);
       ContainerCache.getInstance(conf).shutdownCache();
-      DefaultMetricsSystem.shutdown();
     } catch (IOException e) {
       LOG.error("Exception while shutting down the cluster.", e);
     }
@@ -328,9 +320,26 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
   @Override
   public void stop() {
     LOG.info("Stopping the Mini Ozone Cluster");
-    stopOM(ozoneManager);
-    stopDatanodes(hddsDatanodes);
-    stopSCM(scm);
+    if (ozoneManager != null) {
+      LOG.info("Stopping the OzoneManager");
+      ozoneManager.stop();
+      ozoneManager.join();
+    }
+
+    if (!hddsDatanodes.isEmpty()) {
+      LOG.info("Shutting the HddsDatanodes");
+      hddsDatanodes.parallelStream()
+          .forEach(dn -> {
+            dn.stop();
+            dn.join();
+          });
+    }
+
+    if (scm != null) {
+      LOG.info("Stopping the StorageContainerManager");
+      scm.stop();
+      scm.join();
+    }
   }
 
   /**
@@ -371,37 +380,6 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
     this.caClient = client;
   }
 
-  private static void stopDatanodes(
-      Collection<HddsDatanodeService> hddsDatanodes) {
-    if (!hddsDatanodes.isEmpty()) {
-      LOG.info("Stopping the HddsDatanodes");
-      hddsDatanodes.parallelStream()
-          .forEach(MiniOzoneClusterImpl::stopDatanode);
-    }
-  }
-
-  private static void stopDatanode(HddsDatanodeService dn) {
-    if (dn != null) {
-      dn.stop();
-      dn.join();
-    }
-  }
-
-  private static void stopSCM(StorageContainerManager scm) {
-    if (scm != null) {
-      LOG.info("Stopping the StorageContainerManager");
-      scm.stop();
-      scm.join();
-    }
-  }
-
-  private static void stopOM(OzoneManager om) {
-    if (om != null) {
-      LOG.info("Stopping the OzoneManager");
-      om.stop();
-      om.join();
-    }
-  }
 
   /**
    * Builder for configuring the MiniOzoneCluster to run.
@@ -421,9 +399,8 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
     public MiniOzoneCluster build() throws IOException {
       DefaultMetricsSystem.setMiniClusterMode(true);
       initializeConfiguration();
-      StorageContainerManager scm = null;
-      OzoneManager om = null;
-      List<HddsDatanodeService> hddsDatanodes = Collections.emptyList();
+      StorageContainerManager scm;
+      OzoneManager om;
       try {
         scm = createSCM();
         scm.start();
@@ -431,32 +408,19 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
         if(certClient != null) {
           om.setCertClient(certClient);
         }
-        om.start();
-
-        hddsDatanodes = createHddsDatanodes(scm);
-        MiniOzoneClusterImpl cluster = new MiniOzoneClusterImpl(conf, om, scm,
-            hddsDatanodes);
-        cluster.setCAClient(certClient);
-        if (startDataNodes) {
-          cluster.startHddsDatanodes();
-        }
-        return cluster;
-      } catch (Exception ex) {
-        stopOM(om);
-        if (startDataNodes) {
-          stopDatanodes(hddsDatanodes);
-        }
-        stopSCM(scm);
-        removeConfiguration();
-
-        if (ex instanceof IOException) {
-          throw (IOException) ex;
-        }
-        if (ex instanceof RuntimeException) {
-          throw (RuntimeException) ex;
-        }
+      } catch (AuthenticationException ex) {
         throw new IOException("Unable to build MiniOzoneCluster. ", ex);
       }
+
+      om.start();
+      final List<HddsDatanodeService> hddsDatanodes = createHddsDatanodes(scm);
+      MiniOzoneClusterImpl cluster = new MiniOzoneClusterImpl(conf, om, scm,
+          hddsDatanodes);
+      cluster.setCAClient(certClient);
+      if (startDataNodes) {
+        cluster.startHddsDatanodes();
+      }
+      return cluster;
     }
 
     /**
@@ -494,14 +458,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
           streamBufferMaxSize.get(), streamBufferSizeUnit.get());
       conf.setStorageSize(OzoneConfigKeys.OZONE_SCM_BLOCK_SIZE, blockSize.get(),
           streamBufferSizeUnit.get());
-      // MiniOzoneCluster should have global pipeline upper limit.
-      conf.setInt(ScmConfigKeys.OZONE_SCM_PIPELINE_NUMBER_LIMIT,
-          pipelineNumber == 3 ? 2 * numOfDatanodes : pipelineNumber);
       configureTrace();
-    }
-
-    void removeConfiguration() {
-      FileUtils.deleteQuietly(new File(path));
     }
 
     /**

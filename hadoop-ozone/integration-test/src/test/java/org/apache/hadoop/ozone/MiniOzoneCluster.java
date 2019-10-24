@@ -97,13 +97,6 @@ public interface MiniOzoneCluster {
   void waitTobeOutOfSafeMode() throws TimeoutException, InterruptedException;
 
   /**
-   * Returns OzoneManager Service ID.
-   *
-   * @return Service ID String
-   */
-  String getServiceId();
-
-  /**
    * Returns {@link StorageContainerManager} associated with this
    * {@link MiniOzoneCluster} instance.
    *
@@ -240,7 +233,7 @@ public interface MiniOzoneCluster {
     protected static final int ACTIVE_OMS_NOT_SET = -1;
 
     protected final OzoneConfiguration conf;
-    protected String path;
+    protected final String path;
 
     protected String clusterId;
     protected String omServiceId;
@@ -266,11 +259,12 @@ public interface MiniOzoneCluster {
     protected int numOfDatanodes = 1;
     protected boolean  startDataNodes = true;
     protected CertificateClient certClient;
-    protected int pipelineNumber = 3;
 
     protected Builder(OzoneConfiguration conf) {
       this.conf = conf;
-      setClusterId(UUID.randomUUID().toString());
+      this.clusterId = UUID.randomUUID().toString();
+      this.path = GenericTestUtils.getTempPath(
+          MiniOzoneClusterImpl.class.getSimpleName() + "-" + clusterId);
     }
 
     /**
@@ -282,8 +276,6 @@ public interface MiniOzoneCluster {
      */
     public Builder setClusterId(String id) {
       clusterId = id;
-      path = GenericTestUtils.getTempPath(
-          MiniOzoneClusterImpl.class.getSimpleName() + "-" + clusterId);
       return this;
     }
 
@@ -350,16 +342,6 @@ public interface MiniOzoneCluster {
      */
     public Builder setNumDatanodes(int val) {
       numOfDatanodes = val;
-      return this;
-    }
-
-    /**
-     * Sets the total number of pipelines to create.
-     * @param val number of pipelines
-     * @return MiniOzoneCluster.Builder
-     */
-    public Builder setPipelineNumber(int val) {
-      pipelineNumber = val;
       return this;
     }
 
