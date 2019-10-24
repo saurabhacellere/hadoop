@@ -108,7 +108,7 @@ public class HdfsLocatedFileStatus
 
   @Override
   public boolean isSymlink() {
-    return uSymlink != null && uSymlink.length > 0;
+    return uSymlink != null;
   }
 
   @Override
@@ -186,6 +186,16 @@ public class HdfsLocatedFileStatus
   public int hashCode() {
     // satisfy findbugs
     return super.hashCode();
+  }
+
+  @Override
+  public String toString() {
+    String res = super.toString();
+    // Append fileId field to the end of the String, but before the "}"
+    StringBuilder sb = new StringBuilder();
+    sb.append(res, 0, res.length() - "}".length());
+    sb.append("; fileId=").append(fileId).append("}");
+    return sb.toString();
   }
 
   /**

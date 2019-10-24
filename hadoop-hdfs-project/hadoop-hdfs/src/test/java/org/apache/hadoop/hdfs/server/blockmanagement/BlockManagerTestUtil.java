@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.curator.shaded.com.google.common.collect.Iterators;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSTestUtil;
 import org.apache.hadoop.hdfs.protocol.Block;
@@ -34,6 +35,7 @@ import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
 import org.apache.hadoop.hdfs.server.protocol.StorageReport;
 import org.apache.hadoop.test.Whitebox;
+import org.apache.hadoop.util.Daemon;
 import org.junit.Assert;
 
 import com.google.common.base.Preconditions;
@@ -61,7 +63,9 @@ public class BlockManagerTestUtil {
     try {
       DatanodeDescriptor dn =
           ns.getBlockManager().getDatanodeManager().getDatanode(storageID);
-      return dn.getBlockIterator(startBlock);
+      Iterator<BlockInfo> iter = dn.getBlockIterator();
+      Iterators.advance(iter, startBlock);
+      return iter;
     } finally {
       ns.readUnlock();
     }
@@ -80,8 +84,7 @@ public class BlockManagerTestUtil {
 
   /**
    * @return a tuple of the replica state (number racks, number live
-   * replicas, number needed replicas and number of UpgradeDomains) for the
-   * given block.
+   * replicas, and number needed replicas) for the given block.
    */
   public static int[] getReplicaInfo(final FSNamesystem namesystem, final Block b) {
     final BlockManager bm = namesystem.getBlockManager();
@@ -90,8 +93,7 @@ public class BlockManagerTestUtil {
       final BlockInfo storedBlock = bm.getStoredBlock(b);
       return new int[]{getNumberOfRacks(bm, b),
           bm.countNodes(storedBlock).liveReplicas(),
-          bm.neededReconstruction.contains(storedBlock) ? 1 : 0,
-          getNumberOfDomains(bm, b)};
+          bm.neededReconstruction.contains(storedBlock) ? 1 : 0};
     } finally {
       namesystem.readUnlock();
     }
@@ -122,27 +124,10 @@ public class BlockManagerTestUtil {
   }
 
   /**
-   * @return the number of UpgradeDomains over which a given block is replicated
-   * decommissioning/decommissioned nodes are not counted. corrupt replicas
-   * are also ignored.
+   * @return redundancy monitor thread instance from block manager.
    */
-  private static int getNumberOfDomains(final BlockManager blockManager,
-                                        final Block b) {
-    final Set<String> domSet = new HashSet<String>(0);
-    final Collection<DatanodeDescriptor> corruptNodes =
-        getCorruptReplicas(blockManager).getNodes(b);
-    for(DatanodeStorageInfo storage : blockManager.blocksMap.getStorages(b)) {
-      final DatanodeDescriptor cur = storage.getDatanodeDescriptor();
-      if (!cur.isDecommissionInProgress() && !cur.isDecommissioned()) {
-        if ((corruptNodes == null) || !corruptNodes.contains(cur)) {
-          String domain = cur.getUpgradeDomain();
-          if (domain != null && !domSet.contains(domain)) {
-            domSet.add(domain);
-          }
-        }
-      }
-    }
-    return domSet.size();
+  public static Daemon getRedundancyThread(final BlockManager blockManager) {
+    return blockManager.getRedundancyThread();
   }
 
   /**

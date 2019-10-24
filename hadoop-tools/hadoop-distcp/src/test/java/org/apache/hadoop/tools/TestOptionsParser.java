@@ -19,9 +19,7 @@
 package org.apache.hadoop.tools;
 
 import static org.apache.hadoop.test.GenericTestUtils.assertExceptionContains;
-import static org.assertj.core.api.Assertions.within;
 import static org.junit.Assert.fail;
-import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -108,14 +106,14 @@ public class TestOptionsParser {
     DistCpOptions options = OptionsParser.parse(new String[] {
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getMapBandwidth()).isCloseTo(0f, within(DELTA));
+    Assert.assertEquals(options.getMapBandwidth(), 0, DELTA);
 
     options = OptionsParser.parse(new String[] {
         "-bandwidth",
         "11.2",
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getMapBandwidth()).isCloseTo(11.2f, within(DELTA));
+    Assert.assertEquals(options.getMapBandwidth(), 11.2, DELTA);
   }
 
   @Test(expected=IllegalArgumentException.class)
@@ -258,21 +256,21 @@ public class TestOptionsParser {
     DistCpOptions options = OptionsParser.parse(new String[] {
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getMaxMaps()).isEqualTo(DistCpConstants.DEFAULT_MAPS);
+    Assert.assertEquals(options.getMaxMaps(), DistCpConstants.DEFAULT_MAPS);
 
     options = OptionsParser.parse(new String[] {
         "-m",
         "1",
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getMaxMaps()).isEqualTo(1);
+    Assert.assertEquals(options.getMaxMaps(), 1);
 
     options = OptionsParser.parse(new String[] {
         "-m",
         "0",
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getMaxMaps()).isEqualTo(1);
+    Assert.assertEquals(options.getMaxMaps(), 1);
 
     try {
       OptionsParser.parse(new String[] {
@@ -391,13 +389,13 @@ public class TestOptionsParser {
         "-f",
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getCopyStrategy()).isEqualTo("dynamic");
+    Assert.assertEquals(options.getCopyStrategy(), "dynamic");
 
     options = OptionsParser.parse(new String[] {
         "-f",
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getCopyStrategy()).isEqualTo(DistCpConstants.UNIFORMSIZE);
+    Assert.assertEquals(options.getCopyStrategy(), DistCpConstants.UNIFORMSIZE);
   }
 
   @Test
@@ -565,7 +563,7 @@ public class TestOptionsParser {
     conf = new Configuration();
     Assert.assertFalse(conf.getBoolean(DistCpOptionSwitch.SYNC_FOLDERS.getConfigLabel(), false));
     Assert.assertFalse(conf.getBoolean(DistCpOptionSwitch.DELETE_MISSING.getConfigLabel(), false));
-    assertThat(conf.get(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel())).isNull();
+    Assert.assertEquals(conf.get(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel()), null);
     options = OptionsParser.parse(new String[] {
         "-update",
         "-delete",
@@ -577,9 +575,8 @@ public class TestOptionsParser {
     options.appendToConf(conf);
     Assert.assertTrue(conf.getBoolean(DistCpOptionSwitch.SYNC_FOLDERS.getConfigLabel(), false));
     Assert.assertTrue(conf.getBoolean(DistCpOptionSwitch.DELETE_MISSING.getConfigLabel(), false));
-    assertThat(conf.get(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel())).isEqualTo("U");
-    assertThat(conf.getFloat(DistCpOptionSwitch.BANDWIDTH.getConfigLabel(), -1))
-        .isCloseTo(11.2f, within(DELTA));
+    Assert.assertEquals(conf.get(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel()), "U");
+    Assert.assertEquals(conf.getFloat(DistCpOptionSwitch.BANDWIDTH.getConfigLabel(), -1), 11.2, DELTA);
   }
 
   @Test
@@ -591,8 +588,9 @@ public class TestOptionsParser {
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
     options.appendToConf(conf);
-    assertThat(conf.getFloat(DistCpOptionSwitch.BANDWIDTH.getConfigLabel(), -1))
-            .isCloseTo(-1.0f,within(DELTA));
+    Assert.assertEquals(
+        conf.getFloat(DistCpOptionSwitch.BANDWIDTH.getConfigLabel(), -1), -1.0,
+        DELTA);
 
     conf = new Configuration();
     Assert.assertEquals(
@@ -802,6 +800,25 @@ public class TestOptionsParser {
         "/tmp/filters.txt",
         "hdfs://localhost:8020/source/first",
         "hdfs://localhost:8020/target/"});
-    assertThat(options.getFiltersFile()).isEqualTo("/tmp/filters.txt");
+    Assert.assertEquals(options.getFiltersFile(), "/tmp/filters.txt");
+  }
+
+  @Test
+  public void testParseDeleteSkipTrash() {
+    DistCpOptions options = OptionsParser.parse(new String[] {
+        "-overwrite",
+        "-delete",
+        "-useTrash",
+        "hdfs://localhost:8020/source/first",
+        "hdfs://localhost:8020/target/"});
+    Assert.assertTrue("Delete with useTrash.",
+        options.shouldDeleteUseTrash());
+    options = OptionsParser.parse(new String[] {
+        "-overwrite",
+        "-delete",
+        "hdfs://localhost:8020/source/first",
+        "hdfs://localhost:8020/target/"});
+    Assert.assertFalse("Delete does not use trash.",
+        options.shouldDeleteUseTrash());
   }
 }
