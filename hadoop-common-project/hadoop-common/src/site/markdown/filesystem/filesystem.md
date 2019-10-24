@@ -43,15 +43,6 @@ The implementations of `FileSystem` shipped with Apache Hadoop
 All the requirements of a valid FileSystem are considered implicit preconditions and postconditions:
 all operations on a valid FileSystem MUST result in a new FileSystem that is also valid.
 
-## Feasible features
-
-### <a name="ProtectedDirectories"></a>Protected directories
-
-HDFS has the notion of *Protected Directories*, which are declared in
-the option `fs.protected.directories`. Any attempt to delete or rename
-such a directory or a parent thereof raises an `AccessControlException`.
-Accordingly, any attempt to delete the root directory SHALL, if there is
-a protected directory, result in such an exception being raised.
 
 ## Predicates and other state access operations
 
@@ -914,6 +905,28 @@ the file, then verify the invariants in the `PathHandle` using
 `getFileStatus(Path)` to implement `CONTENT`. This could yield false
 positives and it requires additional RPC traffic.
 
+
+### `copyFile(URI srcFile, URI dstFile)`
+
+Copies a file `srcFile` to another file `dstFile`.
+
+Implementations without a compliant call MUST throw
+`UnsupportedOperationException`.
+
+#### Preconditions
+
+    if not exists(FS, srcFile) : raise FileNotFoundException
+
+    if not exists(parentFolder(dstFile)) : raise [IllegalArguementException]
+
+    if isDirectory(srcFile) : raise [IllegalArguementException]
+
+
+#### Postconditions
+
+`dstFile` is available in the filesystem. `dstFile` matches that of `srcFile`.
+Overwrites `dstFile` if already present.
+
 ### `boolean delete(Path p, boolean recursive)`
 
 Delete a path, be it a file, symbolic link or directory. The
@@ -1018,6 +1031,12 @@ filesystem is desired.
 
 1. Object Stores: see [Object Stores: root directory deletion](#object-stores-rm-root).
 
+HDFS has the notion of *Protected Directories*, which are declared in
+the option `fs.protected.directories`. Any attempt to delete such a directory
+or a parent thereof raises an `AccessControlException`. Accordingly, any
+attempt to delete the root directory SHALL, if there is a protected directory,
+result in such an exception being raised.
+
 This specification does not recommend any specific action. Do note, however,
 that the POSIX model assumes that there is a permissions model such that normal
 users do not have the permission to delete that root directory; it is an action
@@ -1073,8 +1092,6 @@ removes the path and all descendants
 entry-by-entry delete operation.
 This can break the expectations of client applications for O(1) atomic directory
 deletion, preventing the stores' use as drop-in replacements for HDFS.
-
-* [The feature of protected directories](#ProtectedDirectories) can be supported.
 
 ### `boolean rename(Path src, Path d)`
 
@@ -1242,9 +1259,6 @@ The behavior of HDFS here should not be considered a feature to replicate.
 `FileContext` explicitly changed the behavior to raise an exception, and the retrofitting of that action
 to the `DFSFileSystem` implementation is an ongoing matter for debate.
 
-**Protected directories**
-
-* [The feature of protected directories](#ProtectedDirectories) can be supported.
 
 ### `void concat(Path p, Path sources[])`
 
