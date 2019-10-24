@@ -15,9 +15,9 @@
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.apache.hadoop</groupId>
-    <artifactId>hadoop-main-ozone</artifactId>
-    <version>0.5.0-SNAPSHOT</version>
-    <relativePath>../pom.ozone.xml</relativePath>
+    <artifactId>hadoop-project</artifactId>
+    <version>3.2.0</version>
+    <relativePath/>
   </parent>
   <artifactId>hadoop-ozone</artifactId>
   <version>0.5.0-SNAPSHOT</version>
@@ -26,9 +26,10 @@
   <packaging>pom</packaging>
 
   <properties>
+    <hadoop.version>3.2.0</hadoop.version>
     <hdds.version>0.5.0-SNAPSHOT</hdds.version>
     <ozone.version>0.5.0-SNAPSHOT</ozone.version>
-    <ratis.version>0.5.0-201fc85-SNAPSHOT</ratis.version>
+    <ratis.version>0.4.0-78e95b9-SNAPSHOT</ratis.version>
     <bouncycastle.version>1.60</bouncycastle.version>
     <ozone.release>Crater Lake</ozone.release>
     <declared.ozone.version>${ozone.version}</declared.ozone.version>
@@ -291,9 +292,17 @@
             <exclude>**/dependency-reduced-pom.xml</exclude>
             <exclude>**/node_modules/**</exclude>
             <exclude>**/yarn.lock</exclude>
-            <exclude>**/ozone-recon-web/build/**</exclude>
+            <exclude>**/recon-web/build/**</exclude>
             <exclude>src/main/license/**</exclude>
           </excludes>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>findbugs-maven-plugin</artifactId>
+        <version>3.0.4</version>
+        <configuration>
+          <excludeFilterFile combine.self="override"/>
         </configuration>
       </plugin>
       <plugin>
@@ -343,7 +352,7 @@
         <configuration>
           <excludes>
             <exclude>**/node_modules/*</exclude>
-            <exclude>**/ozone-recon-web/**</exclude>
+            <exclude>**/recon-web/**</exclude>
           </excludes>
         </configuration>
         <executions>
