@@ -27,12 +27,13 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_LIFELINE_HANDLER
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SERVICE_HANDLER_COUNT_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SERVICE_HANDLER_COUNT_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_RPC_ADDRESS_AUXILIARY_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_STATE_CONTEXT_ENABLED_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_STATE_CONTEXT_ENABLED_KEY;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SEND_QOP_ENABLED;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SEND_QOP_ENABLED_DEFAULT;
 import static org.apache.hadoop.hdfs.server.common.HdfsServerConstants.MAX_PATH_DEPTH;
 import static org.apache.hadoop.hdfs.server.common.HdfsServerConstants.MAX_PATH_LENGTH;
 import static org.apache.hadoop.util.Time.now;
 
+import com.google.common.base.Charsets;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -44,6 +45,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 import com.google.common.collect.Lists;
 
@@ -100,6 +102,7 @@ import org.apache.hadoop.hdfs.protocol.DSQuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.DirectoryListing;
+import org.apache.hadoop.hdfs.protocol.DisconnectPolicy;
 import org.apache.hadoop.hdfs.protocol.ECBlockGroupStats;
 import org.apache.hadoop.hdfs.protocol.ErasureCodingPolicy;
 import org.apache.hadoop.hdfs.protocol.EncryptionZone;
@@ -124,6 +127,7 @@ import org.apache.hadoop.hdfs.protocol.QuotaByStorageTypeExceededException;
 import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.RecoveryInProgressException;
 import org.apache.hadoop.hdfs.protocol.ReplicatedBlockStats;
+import org.apache.hadoop.hdfs.protocol.SyncMount;
 import org.apache.hadoop.hdfs.protocol.ZoneReencryptionStatus;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeInfo;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport;
@@ -146,6 +150,8 @@ import org.apache.hadoop.hdfs.protocolPB.NamenodeProtocolPB;
 import org.apache.hadoop.hdfs.protocolPB.NamenodeProtocolServerSideTranslatorPB;
 import org.apache.hadoop.hdfs.protocolPB.ReconfigurationProtocolPB;
 import org.apache.hadoop.hdfs.protocolPB.ReconfigurationProtocolServerSideTranslatorPB;
+import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
+import org.apache.hadoop.hdfs.security.token.block.BlockTokenSecretManager;
 import org.apache.hadoop.hdfs.security.token.block.DataEncryptionKey;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
 import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenIdentifier;
@@ -160,6 +166,7 @@ import org.apache.hadoop.hdfs.server.namenode.metrics.NameNodeMetrics;
 import org.apache.hadoop.hdfs.server.namenode.sps.StoragePolicySatisfyManager;
 import org.apache.hadoop.hdfs.server.protocol.BlockReportContext;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations;
+import org.apache.hadoop.hdfs.server.protocol.BulkSyncTaskExecutionFeedback;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
@@ -171,7 +178,6 @@ import org.apache.hadoop.hdfs.server.protocol.NamenodeProtocols;
 import org.apache.hadoop.hdfs.server.protocol.NamenodeRegistration;
 import org.apache.hadoop.hdfs.server.protocol.NamespaceInfo;
 import org.apache.hadoop.hdfs.server.protocol.NodeRegistration;
-import org.apache.hadoop.hdfs.server.protocol.RegisterCommand;
 import org.apache.hadoop.hdfs.server.protocol.RemoteEditLogManifest;
 import org.apache.hadoop.hdfs.server.protocol.SlowDiskReports;
 import org.apache.hadoop.hdfs.server.protocol.SlowPeerReports;
@@ -265,6 +271,8 @@ public class NameNodeRpcServer implements NamenodeProtocols {
   private final String minimumDataNodeVersion;
 
   private final String defaultECPolicyName;
+
+  private final boolean shouldSendQOP;
 
   public NameNodeRpcServer(Configuration conf, NameNode nn)
       throws IOException {
@@ -449,16 +457,6 @@ public class NameNodeRpcServer implements NamenodeProtocols {
     }
     LOG.info("RPC server is binding to " + bindHost + ":" + rpcAddr.getPort());
 
-    boolean enableStateContext = conf.getBoolean(
-        DFS_NAMENODE_STATE_CONTEXT_ENABLED_KEY,
-        DFS_NAMENODE_STATE_CONTEXT_ENABLED_DEFAULT);
-    LOG.info("Enable NameNode state context:" + enableStateContext);
-
-    GlobalStateIdContext stateIdContext = null;
-    if (enableStateContext) {
-      stateIdContext = new GlobalStateIdContext((namesystem));
-    }
-
     clientRpcServer = new RPC.Builder(conf)
         .setProtocol(
             org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class)
@@ -468,7 +466,7 @@ public class NameNodeRpcServer implements NamenodeProtocols {
         .setNumHandlers(handlerCount)
         .setVerbose(false)
         .setSecretManager(namesystem.getDelegationTokenSecretManager())
-        .setAlignmentContext(stateIdContext)
+        .setAlignmentContext(new GlobalStateIdContext(namesystem))
         .build();
 
     // Add all the RPC protocols that the namenode implements
@@ -558,6 +556,8 @@ public class NameNodeRpcServer implements NamenodeProtocols {
         this.clientRpcServer.addAuxiliaryListener(auxiliaryPort);
       }
     }
+    this.shouldSendQOP = conf.getBoolean(
+        DFS_NAMENODE_SEND_QOP_ENABLED, DFS_NAMENODE_SEND_QOP_ENABLED_DEFAULT);
   }
 
   /** Allow access to the lifeline RPC server for testing */
@@ -765,6 +765,11 @@ public class NameNodeRpcServer implements NamenodeProtocols {
     metrics.incrGetBlockLocations();
     LocatedBlocks locatedBlocks =
         namesystem.getBlockLocations(getClientMachine(), src, offset, length);
+    if (shouldSendQOP) {
+      for (LocatedBlock lb : locatedBlocks.getLocatedBlocks()) {
+        wrapEstablishedQOP(lb, getEstablishedClientQOP());
+      }
+    }
     return locatedBlocks;
   }
   
@@ -839,6 +844,9 @@ public class NameNodeRpcServer implements NamenodeProtocols {
       RetryCache.setState(cacheEntry, success, info);
     }
     metrics.incrFilesAppended();
+    if (shouldSendQOP) {
+      wrapEstablishedQOP(info.getLastBlock(), getEstablishedClientQOP());
+    }
     return info;
   }
 
@@ -907,6 +915,9 @@ public class NameNodeRpcServer implements NamenodeProtocols {
     if (locatedBlock != null) {
       metrics.incrAddBlockOps();
     }
+    if (shouldSendQOP) {
+      wrapEstablishedQOP(locatedBlock, getEstablishedClientQOP());
+    }
     return locatedBlock;
   }
 
@@ -940,6 +951,9 @@ public class NameNodeRpcServer implements NamenodeProtocols {
     LocatedBlock locatedBlock = namesystem.getAdditionalDatanode(src, fileId,
         blk, existings, existingStorageIDs, excludeSet, numAdditionalNodes,
         clientName);
+    if (shouldSendQOP) {
+      wrapEstablishedQOP(locatedBlock, getEstablishedClientQOP());
+    }
     return locatedBlock;
   }
   /**
@@ -1320,6 +1334,7 @@ public class NameNodeRpcServer implements NamenodeProtocols {
   @Override // NamenodeProtocol
   public CheckpointSignature rollEditLog() throws IOException {
     checkNNStartup();
+    namesystem.checkSuperuserPrivilege();
     return namesystem.rollEditLog();
   }
   
@@ -1397,8 +1412,7 @@ public class NameNodeRpcServer implements NamenodeProtocols {
 
   @Override // ClientProtocol
   public void msync() throws IOException {
-    // Check for write access to ensure that msync only happens on active
-    namesystem.checkOperation(OperationCategory.WRITE);
+    // TODO : need to be filled up if needed. May be a no-op here.
   }
 
   @Override // ClientProtocol
@@ -1558,14 +1572,15 @@ public class NameNodeRpcServer implements NamenodeProtocols {
       int failedVolumes, VolumeFailureSummary volumeFailureSummary,
       boolean requestFullBlockReportLease,
       @Nonnull SlowPeerReports slowPeers,
-      @Nonnull SlowDiskReports slowDisks)
-          throws IOException {
+      @Nonnull SlowDiskReports slowDisks,
+      BulkSyncTaskExecutionFeedback bulkSyncTaskExecutionFeedback)
+      throws IOException {
     checkNNStartup();
     verifyRequest(nodeReg);
     return namesystem.handleHeartbeat(nodeReg, report,
         dnCacheCapacity, dnCacheUsed, xceiverCount, xmitsInProgress,
         failedVolumes, volumeFailureSummary, requestFullBlockReportLease,
-        slowPeers, slowDisks);
+        slowPeers, slowDisks, bulkSyncTaskExecutionFeedback);
   }
 
   @Override // DatanodeProtocol
@@ -1580,25 +1595,21 @@ public class NameNodeRpcServer implements NamenodeProtocols {
     }
     final BlockManager bm = namesystem.getBlockManager(); 
     boolean noStaleStorages = false;
-    try {
-      if (bm.checkBlockReportLease(context, nodeReg)) {
-        for (int r = 0; r < reports.length; r++) {
-          final BlockListAsLongs blocks = reports[r].getBlocks();
-          //
-          // BlockManager.processReport accumulates information of prior calls
-          // for the same node and storage, so the value returned by the last
-          // call of this loop is the final updated value for noStaleStorage.
-          //
-          final int index = r;
-          noStaleStorages = bm.runBlockOp(() ->
-            bm.processReport(nodeReg, reports[index].getStorage(),
-                blocks, context));
+    for (int r = 0; r < reports.length; r++) {
+      final BlockListAsLongs blocks = reports[r].getBlocks();
+      //
+      // BlockManager.processReport accumulates information of prior calls
+      // for the same node and storage, so the value returned by the last
+      // call of this loop is the final updated value for noStaleStorage.
+      //
+      final int index = r;
+      noStaleStorages = bm.runBlockOp(new Callable<Boolean>() {
+        @Override
+        public Boolean call() throws IOException {
+          return bm.processReport(nodeReg, reports[index].getStorage(),
+              blocks, context);
         }
-      }
-    } catch (UnregisteredNodeException une) {
-      LOG.debug("Datanode {} is attempting to report but not register yet.",
-          nodeReg);
-      return RegisterCommand.REGISTER;
+      });
     }
     bm.removeBRLeaseIfNeeded(nodeReg, context);
 
@@ -1866,7 +1877,7 @@ public class NameNodeRpcServer implements NamenodeProtocols {
    *
    * @return the established QOP of this client.
    */
-  public static String getEstablishedClientQOP() {
+  private static String getEstablishedClientQOP() {
     return Server.getEstablishedQOP();
   }
 
@@ -2619,5 +2630,71 @@ public class NameNodeRpcServer implements NamenodeProtocols {
           + "external SPS service is not allowed to fetch the path Ids");
     }
     return namesystem.getBlockManager().getSPSManager().getNextPathId();
+  }
+
+
+  /**
+   * Wrapping the QOP information into the LocatedBlock instance.
+   * The wrapped QOP will be used by DataNode, i.e. DataNode will simply use
+   * this QOP to accept client calls, because this this QOP is viewed
+   * as the QOP that NameNode has accepted.
+   *
+   * @param locatedBlock the LocatedBlock instance
+   * @param qop the QOP to wrap in
+   * @throws RuntimeException
+   */
+  private void wrapEstablishedQOP(LocatedBlock locatedBlock, String qop) {
+    if (qop == null || locatedBlock == null) {
+      return;
+    }
+    BlockTokenSecretManager btsm = namesystem.getBlockManager()
+        .getBlockTokenSecretManager();
+    Token<BlockTokenIdentifier> token = locatedBlock.getBlockToken();
+    byte[] secret = btsm.secretGen(qop.getBytes(Charsets.UTF_8));
+    token.setDNHandshakeSecret(secret);
+  }
+
+  @Override
+  public String createSync(String name, String localBackupPath,
+      String remoteBackupPath) throws IOException {
+    checkNNStartup();
+    return namesystem.createBackup(name, localBackupPath, remoteBackupPath);
+  }
+
+  @Override
+  public boolean fullResync(String name) throws IOException {
+    checkNNStartup();
+    return namesystem.fullResync(name);
+  }
+
+  @Override
+  public String getStatus(String syncMountName) throws IOException {
+    checkNNStartup();
+    return namesystem.getStatus(syncMountName);
+  }
+
+  @Override
+  public void removeSync(String name, DisconnectPolicy policy)
+      throws IOException {
+    checkNNStartup();
+    namesystem.removeBackup(name, policy);
+  }
+
+  @Override
+  public List<SyncMount> getSyncMounts() throws IOException {
+    checkNNStartup();
+    return namesystem.getSyncList();
+  }
+
+  @Override
+  public void pauseSync(String name) throws IOException {
+    checkNNStartup();
+    namesystem.pauseSync(name);
+  }
+
+  @Override
+  public void resumeSync(String name) throws IOException {
+    checkNNStartup();
+    namesystem.resumeSync(name);
   }
 }
