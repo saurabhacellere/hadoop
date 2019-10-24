@@ -36,6 +36,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 import org.apache.commons.collections.keyvalue.DefaultMapEntry;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
@@ -77,7 +78,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMNodeLabelsMana
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppRunningOnNodeEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpired;
+import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpirer;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.AllocationExpirationInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerUtils;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeAddedSchedulerEvent;
@@ -119,6 +120,7 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
   private final NodeId nodeId;
   private final RMContext context;
   private final String hostName;
+  private String clusterId;
   private final int commandPort;
   private int httpPort;
   private final String nodeAddress; // The containerManager address
@@ -146,7 +148,7 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
   /* Container Queue Information for the node.. Used by Distributed Scheduler */
   private OpportunisticContainersStatus opportunisticContainersStatus;
 
-  private final ContainerAllocationExpired containerAllocationExpired;
+  private final ContainerAllocationExpirer containerAllocationExpirer;
   /* set of containers that have just launched */
   private final Set<ContainerId> launchedContainers =
     new HashSet<ContainerId>();
@@ -216,9 +218,6 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
       .addTransition(NodeState.NEW, NodeState.DECOMMISSIONED,
           RMNodeEventType.DECOMMISSION,
           new DeactivateNodeTransition(NodeState.DECOMMISSIONED))
-      .addTransition(NodeState.NEW, NodeState.NEW,
-          RMNodeEventType.FINISHED_CONTAINERS_PULLED_BY_AM,
-          new AddContainersToBeRemovedFromNMTransition())
 
       //Transitions from RUNNING state
       .addTransition(NodeState.RUNNING,
@@ -381,12 +380,12 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
       int cmPort, int httpPort, Node node, Resource capability,
       String nodeManagerVersion) {
     this(nodeId, context, hostName, cmPort, httpPort, node, capability,
-        nodeManagerVersion, null);
+        nodeManagerVersion, null, YarnConfiguration.DEFAULT_RM_CLUSTER_ID);
   }
 
   public RMNodeImpl(NodeId nodeId, RMContext context, String hostName,
       int cmPort, int httpPort, Node node, Resource capability,
-      String nodeManagerVersion, Resource physResource) {
+      String nodeManagerVersion, Resource physResource, String clusterId) {
     this.nodeId = nodeId;
     this.context = context;
     this.hostName = hostName;
@@ -412,7 +411,9 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
 
     this.nodeUpdateQueue = new ConcurrentLinkedQueue<UpdatedContainerInfo>();
 
-    this.containerAllocationExpired = context.getContainerAllocationExpirer();
+    this.containerAllocationExpirer = context.getContainerAllocationExpirer();
+
+    this.clusterId = clusterId;
   }
 
   @Override
@@ -423,6 +424,11 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
   @Override
   public String getHostName() {
     return hostName;
+  }
+
+  @Override
+  public String getClusterID() {
+    return clusterId;
   }
 
   @Override
@@ -1432,8 +1438,8 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
           // Just launched container. RM knows about it the first time.
           launchedContainers.add(containerId);
           newlyLaunchedContainers.add(remoteContainer);
-          // Unregister from containerAllocationExpired.
-          containerAllocationExpired
+          // Unregister from containerAllocationExpirer.
+          containerAllocationExpirer
               .unregister(new AllocationExpirationInfo(containerId));
         }
 
@@ -1462,8 +1468,8 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
         if (completedContainers.add(containerId)) {
           newlyCompletedContainers.add(remoteContainer);
         }
-        // Unregister from containerAllocationExpired.
-        containerAllocationExpired
+        // Unregister from containerAllocationExpirer.
+        containerAllocationExpirer
             .unregister(new AllocationExpirationInfo(containerId));
       }
     }
@@ -1600,10 +1606,5 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
     Map<NodeAttribute, AttributeValue> nodeattrs =
         attrMgr.getAttributesForNode(hostName);
     return nodeattrs.keySet();
-  }
-
-  @VisibleForTesting
-  public Set<ContainerId> getContainersToBeRemovedFromNM() {
-    return containersToBeRemovedFromNM;
   }
 }
