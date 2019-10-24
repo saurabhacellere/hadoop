@@ -45,7 +45,8 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import static org.apache.hadoop.fs.contract.ContractTestUtils.assertCapabilities;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class TestCryptoStreams extends CryptoStreamsTestBase {
   /**
@@ -147,6 +148,11 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
     }
 
     @Override
+    public void sync() throws IOException {
+      hflush();
+    }
+
+    @Override
     public void hflush() throws IOException {
       checkStream();
       flush();
@@ -179,9 +185,9 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
   
   static class FakeInputStream extends InputStream
       implements Seekable, PositionedReadable, ByteBufferReadable,
-                 HasFileDescriptor, CanSetDropBehind, CanSetReadahead,
-                 HasEnhancedByteBufferAccess, CanUnbuffer,
-                 StreamCapabilities, ByteBufferPositionedReadable {
+      ByteBufferPositionedReadable, HasFileDescriptor, CanSetDropBehind,
+      CanSetReadahead, HasEnhancedByteBufferAccess, CanUnbuffer,
+      StreamCapabilities {
     private final byte[] oneByteBuf = new byte[1];
     private int pos = 0;
     private final byte[] data;
@@ -326,32 +332,7 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
         buf.put(data, (int) position, n);
         return n;
       }
-
       return -1;
-    }
-
-    @Override
-    public void readFully(long position, ByteBuffer buf) throws IOException {
-      if (buf == null) {
-        throw new NullPointerException();
-      } else if (!buf.hasRemaining()) {
-        return;
-      }
-
-      if (position > length) {
-        throw new IOException("Cannot read after EOF.");
-      }
-      if (position < 0) {
-        throw new IOException("Cannot read to negative offset.");
-      }
-
-      checkStream();
-
-      if (position + buf.remaining() > length) {
-        throw new EOFException("Reach the end of stream.");
-      }
-
-      buf.put(data, (int) position, buf.remaining());
     }
 
     @Override
@@ -471,35 +452,23 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
     // verify hasCapability returns what FakeOutputStream is set up for
     CryptoOutputStream cos =
         (CryptoOutputStream) getOutputStream(defaultBufferSize, key, iv);
-
-    assertCapabilities(cos,
-        new String[] {
-            StreamCapabilities.HFLUSH,
-            StreamCapabilities.HSYNC,
-            StreamCapabilities.DROPBEHIND
-        },
-        new String[] {
-            StreamCapabilities.READAHEAD,
-            StreamCapabilities.UNBUFFER
-        }
-    );
+    assertTrue(cos instanceof StreamCapabilities);
+    assertTrue(cos.hasCapability(StreamCapabilities.HFLUSH));
+    assertTrue(cos.hasCapability(StreamCapabilities.HSYNC));
+    assertTrue(cos.hasCapability(StreamCapabilities.DROPBEHIND));
+    assertFalse(cos.hasCapability(StreamCapabilities.READAHEAD));
+    assertFalse(cos.hasCapability(StreamCapabilities.UNBUFFER));
 
     // verify hasCapability for input stream
     CryptoInputStream cis =
         (CryptoInputStream) getInputStream(defaultBufferSize, key, iv);
-
-    assertCapabilities(cis,
-        new String[] {
-            StreamCapabilities.DROPBEHIND,
-            StreamCapabilities.READAHEAD,
-            StreamCapabilities.UNBUFFER,
-            StreamCapabilities.READBYTEBUFFER,
-            StreamCapabilities.PREADBYTEBUFFER
-        },
-        new String[] {
-            StreamCapabilities.HFLUSH,
-            StreamCapabilities.HSYNC
-        }
-    );
+    assertTrue(cis instanceof StreamCapabilities);
+    assertTrue(cis.hasCapability(StreamCapabilities.DROPBEHIND));
+    assertTrue(cis.hasCapability(StreamCapabilities.READAHEAD));
+    assertTrue(cis.hasCapability(StreamCapabilities.UNBUFFER));
+    assertTrue(cis.hasCapability(StreamCapabilities.READBYTEBUFFER));
+    assertTrue(cis.hasCapability(StreamCapabilities.PREADBYTEBUFFER));
+    assertFalse(cis.hasCapability(StreamCapabilities.HFLUSH));
+    assertFalse(cis.hasCapability(StreamCapabilities.HSYNC));
   }
 }
