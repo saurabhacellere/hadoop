@@ -34,23 +34,22 @@ import org.apache.hadoop.classification.InterfaceStability;
 @InterfaceStability.Evolving
 public interface ByteBufferPositionedReadable {
   /**
-   * Reads up to {@code buf.remaining()} bytes into buf from a given position in
-   * the file and returns the number of bytes read. Callers should use
+   * Reads up to {@code buf.remaining()} bytes into buf from a given position
+   * in the file and returns the number of bytes read. Callers should use
    * {@code buf.limit(...)} to control the size of the desired read and
    * {@code buf.position(...)} to control the offset into the buffer the data
    * should be written to.
    * <p>
    * After a successful call, {@code buf.position()} will be advanced by the
-   * number of bytes read and {@code buf.limit()} will be unchanged.
+   * number of bytes read and {@code buf.limit()} should be unchanged.
    * <p>
-   * In the case of an exception, the state of the buffer (the contents of the
-   * buffer, the {@code buf.position()}, the {@code buf.limit()}, etc.) is
-   * undefined, and callers should be prepared to recover from this eventuality.
+   * In the case of an exception, the values of {@code buf.position()} and
+   * {@code buf.limit()} are undefined, and callers should be prepared to
+   * recover from this eventuality.
    * <p>
-   * Callers should use {@link StreamCapabilities#hasCapability(String)} with
-   * {@link StreamCapabilities#PREADBYTEBUFFER} to check if the underlying
-   * stream supports this interface, otherwise they might get a
-   * {@link UnsupportedOperationException}.
+   * Many implementations will throw {@link UnsupportedOperationException}, so
+   * callers that are not confident in support for this method from the
+   * underlying filesystem should be prepared to handle that exception.
    * <p>
    * Implementations should treat 0-length requests as legitimate, and must not
    * signal an error upon their receipt.

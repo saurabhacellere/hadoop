@@ -130,9 +130,4 @@ public class TestCryptoStreamsNormal extends CryptoStreamsTestBase {
   @Override
   @Test(timeout=10000)
   public void testHasEnhancedByteBufferAccess() throws IOException {}
-
-  @Ignore("ByteArrayInputStream does not support unbuffer")
-  @Override
-  @Test
-  public void testUnbuffer() throws Exception {}
 }

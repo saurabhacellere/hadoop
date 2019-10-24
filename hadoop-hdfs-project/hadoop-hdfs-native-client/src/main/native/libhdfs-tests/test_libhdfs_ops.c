@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
     } 
 
     {
-        //Write tests
+        // Write tests
         
         writeFile = hdfsOpenFile(fs, writePath, O_WRONLY|O_CREAT, 0, 0, 0);
         if(!writeFile) {
@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
     }
 
     {
-        //Read tests
+        // Read tests
         
         exists = hdfsExists(fs, readPath);
 

@@ -28,12 +28,6 @@ import java.util.zip.Checksum;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.fs.ChecksumException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 
 /**
  * This class provides interface and utilities for processing checksums for
@@ -49,12 +43,9 @@ public class DataChecksum implements Checksum {
   public static final int CHECKSUM_CRC32C  = 2;
   public static final int CHECKSUM_DEFAULT = 3; 
   public static final int CHECKSUM_MIXED   = 4;
-
-  private static final Logger LOG = LoggerFactory.getLogger(DataChecksum.class);
-  private static volatile boolean useJava9Crc32C = Shell.isJavaVersionAtLeast(9);
  
   /** The checksum types */
-  public enum Type {
+  public static enum Type {
     NULL  (CHECKSUM_NULL, 0),
     CRC32 (CHECKSUM_CRC32, 4),
     CRC32C(CHECKSUM_CRC32C, 4),
@@ -64,7 +55,7 @@ public class DataChecksum implements Checksum {
     public final int id;
     public final int size;
     
-    Type(int id, int size) {
+    private Type(int id, int size) {
       this.id = id;
       this.size = size;
     }
@@ -87,41 +78,6 @@ public class DataChecksum implements Checksum {
     return new CRC32();
   }
 
-
-  /**
-   * The flag is volatile to avoid synchronization here.
-   * Re-entrancy is unlikely except in failure mode (and inexpensive).
-   */
-  static Checksum newCrc32C() {
-    try {
-      return useJava9Crc32C ? Java9Crc32CFactory.createChecksum()
-          : new PureJavaCrc32C();
-    } catch (ExceptionInInitializerError | RuntimeException e) {
-      // should not happen
-      LOG.error("CRC32C creation failed, switching to PureJavaCrc32C", e);
-      useJava9Crc32C = false;
-      return new PureJavaCrc32C();
-    }
-  }
-
-  /**
-   * @return the int representation of the polynomial associated with the
-   *     CRC {@code type}, suitable for use with further CRC arithmetic.
-   * @throws IOException if there is no CRC polynomial applicable
-   *     to the given {@code type}.
-   */
-  public static int getCrcPolynomialForType(Type type) throws IOException {
-    switch (type) {
-    case CRC32:
-      return CrcUtil.GZIP_POLYNOMIAL;
-    case CRC32C:
-      return CrcUtil.CASTAGNOLI_POLYNOMIAL;
-    default:
-      throw new IOException(
-          "No CRC polynomial could be associated with type: " + type);
-    }
-  }
-
   public static DataChecksum newDataChecksum(Type type, int bytesPerChecksum ) {
     if ( bytesPerChecksum <= 0 ) {
       return null;
@@ -133,7 +89,7 @@ public class DataChecksum implements Checksum {
     case CRC32 :
       return new DataChecksum(type, newCrc32(), bytesPerChecksum );
     case CRC32C:
-      return new DataChecksum(type, newCrc32C(), bytesPerChecksum);
+      return new DataChecksum(type, new PureJavaCrc32C(), bytesPerChecksum);
     default:
       return null;  
     }
@@ -143,12 +99,9 @@ public class DataChecksum implements Checksum {
    * Creates a DataChecksum from HEADER_LEN bytes from arr[offset].
    * @return DataChecksum of the type in the array or null in case of an error.
    */
-  public static DataChecksum newDataChecksum(byte[] bytes, int offset)
-      throws IOException {
+  public static DataChecksum newDataChecksum( byte bytes[], int offset ) {
     if (offset < 0 || bytes.length < offset + getChecksumHeaderSize()) {
-      throw new InvalidChecksumSizeException("Could not create DataChecksum "
-          + " from the byte array of length " + bytes.length
-          + " and offset "+ offset);
+      return null;
     }
     
     // like readInt():
@@ -156,14 +109,7 @@ public class DataChecksum implements Checksum {
                            ( (bytes[offset+2] & 0xff) << 16 ) |
                            ( (bytes[offset+3] & 0xff) << 8 )  |
                            ( (bytes[offset+4] & 0xff) );
-    DataChecksum csum = newDataChecksum(mapByteToChecksumType(bytes[offset]),
-        bytesPerChecksum);
-    if (csum == null) {
-      throw new InvalidChecksumSizeException(("Could not create DataChecksum "
-          + " from the byte array of length " + bytes.length
-          + " and bytesPerCheckSum of "+ bytesPerChecksum));
-    }
-    return csum;
+    return newDataChecksum( Type.valueOf(bytes[offset]), bytesPerChecksum );
   }
   
   /**
@@ -174,22 +120,12 @@ public class DataChecksum implements Checksum {
                                  throws IOException {
     int type = in.readByte();
     int bpc = in.readInt();
-    DataChecksum summer = newDataChecksum(mapByteToChecksumType(type), bpc);
+    DataChecksum summer = newDataChecksum(Type.valueOf(type), bpc );
     if ( summer == null ) {
       throw new InvalidChecksumSizeException("Could not create DataChecksum "
           + "of type " + type + " with bytesPerChecksum " + bpc);
     }
     return summer;
-  }
-
-  private static Type mapByteToChecksumType(int type)
-      throws InvalidChecksumSizeException{
-    try {
-      return Type.valueOf(type);
-    } catch (IllegalArgumentException e) {
-      throw new InvalidChecksumSizeException("The value "+type+" does not map"+
-        " to a valid checksum Type");
-    }
   }
   
   /**
@@ -294,21 +230,17 @@ public class DataChecksum implements Checksum {
   public Type getChecksumType() {
     return type;
   }
-
   /** @return the size for a checksum. */
   public int getChecksumSize() {
     return type.size;
   }
-
   /** @return the required checksum size given the data length. */
   public int getChecksumSize(int dataSize) {
     return ((dataSize - 1)/getBytesPerChecksum() + 1) * getChecksumSize(); 
   }
-
   public int getBytesPerChecksum() {
     return bytesPerChecksum;
   }
-
   public int getNumBytesInSum() {
     return inSum;
   }
@@ -317,19 +249,16 @@ public class DataChecksum implements Checksum {
   static public int getChecksumHeaderSize() {
     return 1 + SIZE_OF_INTEGER; // type byte, bytesPerChecksum int
   }
-
   //Checksum Interface. Just a wrapper around member summer.
   @Override
   public long getValue() {
     return summer.getValue();
   }
-
   @Override
   public void reset() {
     summer.reset();
     inSum = 0;
   }
-
   @Override
   public void update( byte[] b, int off, int len ) {
     if ( len > 0 ) {
@@ -337,7 +266,6 @@ public class DataChecksum implements Checksum {
       inSum += len;
     }
   }
-
   @Override
   public void update( int b ) {
     summer.update( b );
@@ -591,37 +519,5 @@ public class DataChecksum implements Checksum {
     public void update(byte[] b, int off, int len) {}
     @Override
     public void update(int b) {}
-  };
-
-  /**
-   * Holds constructor handle to let it be initialized on demand.
-   */
-  private static class Java9Crc32CFactory {
-    private static final MethodHandle NEW_CRC32C_MH;
-
-    static {
-      MethodHandle newCRC32C = null;
-      try {
-        newCRC32C = MethodHandles.publicLookup()
-            .findConstructor(
-                Class.forName("java.util.zip.CRC32C"),
-                MethodType.methodType(void.class)
-            );
-      } catch (ReflectiveOperationException e) {
-        // Should not reach here.
-        throw new RuntimeException(e);
-      }
-      NEW_CRC32C_MH = newCRC32C;
-    }
-
-    public static Checksum createChecksum() {
-      try {
-        // Should throw nothing
-        return (Checksum) NEW_CRC32C_MH.invoke();
-      } catch (Throwable t) {
-        throw (t instanceof RuntimeException) ? (RuntimeException) t
-            : new RuntimeException(t);
-      }
-    }
   };
 }

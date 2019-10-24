@@ -38,7 +38,6 @@
 #define HADOOP_OSTRM    "org/apache/hadoop/fs/FSDataOutputStream"
 #define HADOOP_STAT     "org/apache/hadoop/fs/FileStatus"
 #define HADOOP_FSPERM   "org/apache/hadoop/fs/permission/FsPermission"
-#define HADOOP_FS_DATA_INPUT_STREAM   "org/apache/hadoop/fs/FSDataInputStream"
 #define JAVA_NET_ISA    "java/net/InetSocketAddress"
 #define JAVA_NET_URI    "java/net/URI"
 #define JAVA_STRING     "java/lang/String"
@@ -260,6 +259,7 @@ void hdfsFileDisableDirectPread(hdfsFile file)
 {
     file->flags &= ~HDFS_FILE_SUPPORTS_DIRECT_PREAD;
 }
+
 
 int hdfsDisableDomainSocketSecurity(void)
 {
@@ -862,150 +862,8 @@ static jthrowable getDefaultBlockSize(JNIEnv *env, jobject jFS,
     return NULL;
 }
 
-hdfsFile hdfsOpenFile(hdfsFS fs, const char *path, int flags,
+hdfsFile hdfsOpenFile(hdfsFS fs, const char *path, int flags, 
                       int bufferSize, short replication, tSize blockSize)
-{
-    struct hdfsStreamBuilder *bld = hdfsStreamBuilderAlloc(fs, path, flags);
-    if (bufferSize != 0) {
-      hdfsStreamBuilderSetBufferSize(bld, bufferSize);
-    }
-    if (replication != 0) {
-      hdfsStreamBuilderSetReplication(bld, replication);
-    }
-    if (blockSize != 0) {
-      hdfsStreamBuilderSetDefaultBlockSize(bld, blockSize);
-    }
-    return hdfsStreamBuilderBuild(bld);
-}
-
-struct hdfsStreamBuilder {
-    hdfsFS fs;
-    int flags;
-    int32_t bufferSize;
-    int16_t replication;
-    int64_t defaultBlockSize;
-    char path[1];
-};
-
-struct hdfsStreamBuilder *hdfsStreamBuilderAlloc(hdfsFS fs,
-                                            const char *path, int flags)
-{
-    int path_len = strlen(path);
-    struct hdfsStreamBuilder *bld;
-
-    // sizeof(hdfsStreamBuilder->path) includes one byte for the string
-    // terminator
-    bld = malloc(sizeof(struct hdfsStreamBuilder) + path_len);
-    if (!bld) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    bld->fs = fs;
-    bld->flags = flags;
-    bld->bufferSize = 0;
-    bld->replication = 0;
-    bld->defaultBlockSize = 0;
-    memcpy(bld->path, path, path_len);
-    bld->path[path_len] = '\0';
-    return bld;
-}
-
-void hdfsStreamBuilderFree(struct hdfsStreamBuilder *bld)
-{
-    free(bld);
-}
-
-int hdfsStreamBuilderSetBufferSize(struct hdfsStreamBuilder *bld,
-                                   int32_t bufferSize)
-{
-    if ((bld->flags & O_ACCMODE) != O_WRONLY) {
-        errno = EINVAL;
-        return -1;
-    }
-    bld->bufferSize = bufferSize;
-    return 0;
-}
-
-int hdfsStreamBuilderSetReplication(struct hdfsStreamBuilder *bld,
-                                    int16_t replication)
-{
-    if ((bld->flags & O_ACCMODE) != O_WRONLY) {
-        errno = EINVAL;
-        return -1;
-    }
-    bld->replication = replication;
-    return 0;
-}
-
-int hdfsStreamBuilderSetDefaultBlockSize(struct hdfsStreamBuilder *bld,
-                                         int64_t defaultBlockSize)
-{
-    if ((bld->flags & O_ACCMODE) != O_WRONLY) {
-        errno = EINVAL;
-        return -1;
-    }
-    bld->defaultBlockSize = defaultBlockSize;
-    return 0;
-}
-
-/**
- * Delegates to FsDataInputStream#hasCapability(String). Used to check if a
- * given input stream supports certain methods, such as
- * ByteBufferReadable#read(ByteBuffer).
- *
- * @param jFile the FsDataInputStream to call hasCapability on
- * @param capability the name of the capability to query; for a full list of
- *        possible values see StreamCapabilities
- *
- * @return true if the given jFile has the given capability, false otherwise
- *
- * @see org.apache.hadoop.fs.StreamCapabilities
- */
-static int hdfsHasStreamCapability(jobject jFile,
-        const char *capability) {
-    int ret = 0;
-    jthrowable jthr = NULL;
-    jvalue jVal;
-    jstring jCapabilityString = NULL;
-
-    /* Get the JNIEnv* corresponding to current thread */
-    JNIEnv* env = getJNIEnv();
-    if (env == NULL) {
-        errno = EINTERNAL;
-        return 0;
-    }
-
-    jthr = newJavaStr(env, capability, &jCapabilityString);
-    if (jthr) {
-        ret = printExceptionAndFree(env, jthr, PRINT_EXC_ALL,
-                "hdfsHasStreamCapability(%s): newJavaStr", capability);
-        goto done;
-    }
-    jthr = invokeMethod(env, &jVal, INSTANCE, jFile,
-            HADOOP_FS_DATA_INPUT_STREAM, "hasCapability", "(Ljava/lang/String;)Z",
-            jCapabilityString);
-    if (jthr) {
-        ret = printExceptionAndFree(env, jthr, PRINT_EXC_ALL,
-                "hdfsHasStreamCapability(%s): FSDataInputStream#hasCapability",
-                capability);
-        goto done;
-    }
-
-done:
-    destroyLocalReference(env, jthr);
-    destroyLocalReference(env, jCapabilityString);
-    if (ret) {
-        errno = ret;
-        return 0;
-    }
-    if (jVal.z == JNI_TRUE) {
-        return 1;
-    }
-    return 0;
-}
-
-static hdfsFile hdfsOpenFileImpl(hdfsFS fs, const char *path, int flags,
-                  int32_t bufferSize, int16_t replication, int64_t blockSize)
 {
     /*
       JAVA EQUIVALENT:
@@ -1014,7 +872,7 @@ static hdfsFile hdfsOpenFileImpl(hdfsFS fs, const char *path, int flags,
        return f{is|os};
     */
     int accmode = flags & O_ACCMODE;
-    jstring jStrBufferSize = NULL, jStrReplication = NULL, jCapabilityString = NULL;
+    jstring jStrBufferSize = NULL, jStrReplication = NULL;
     jobject jConfiguration = NULL, jPath = NULL, jFile = NULL;
     jobject jFS = (jobject)fs;
     jthrowable jthr;
@@ -1043,24 +901,27 @@ static hdfsFile hdfsOpenFileImpl(hdfsFS fs, const char *path, int flags,
       errno = ENOTSUP;
       return NULL;
     } else {
-      fprintf(stderr, "ERROR: cannot open an hdfs file in mode 0x%x\n", accmode);
+      fprintf(stderr, "ERROR: cannot open an hdfs file in mode 0x%x\n",
+              accmode);
       errno = EINVAL;
       return NULL;
     }
 
     if ((flags & O_CREAT) && (flags & O_EXCL)) {
-      fprintf(stderr, "WARN: hdfs does not truly support O_CREATE && O_EXCL\n");
+      fprintf(stderr,
+              "WARN: hdfs does not truly support O_CREATE && O_EXCL\n");
     }
 
     if (accmode == O_RDONLY) {
-	method = "open";
+	    method = "open";
         signature = JMETHOD2(JPARAM(HADOOP_PATH), "I", JPARAM(HADOOP_ISTRM));
     } else if (flags & O_APPEND) {
-	method = "append";
-	signature = JMETHOD1(JPARAM(HADOOP_PATH), JPARAM(HADOOP_OSTRM));
+	    method = "append";
+	    signature = JMETHOD1(JPARAM(HADOOP_PATH), JPARAM(HADOOP_OSTRM));
     } else {
-	method = "create";
-	signature = JMETHOD2(JPARAM(HADOOP_PATH), "ZISJ", JPARAM(HADOOP_OSTRM));
+	    method = "create";
+	    signature = JMETHOD2(JPARAM(HADOOP_PATH), "ZISJ",
+	            JPARAM(HADOOP_OSTRM));
     }
 
     /* Create an object of org.apache.hadoop.fs.Path */
@@ -1172,16 +1033,16 @@ static hdfsFile hdfsOpenFileImpl(hdfsFS fs, const char *path, int flags,
     file->flags = 0;
 
     if ((flags & O_WRONLY) == 0) {
-        // Check the StreamCapabilities of jFile to see if we can do direct
-        // reads
-        if (hdfsHasStreamCapability(jFile, "in:readbytebuffer")) {
+        // Try a test read to see if we can do direct reads
+        char buf;
+        if (readDirect(fs, file, &buf, 0) == 0) {
+            // Success - 0-byte read should return 0
             file->flags |= HDFS_FILE_SUPPORTS_DIRECT_READ;
-        }
-
-        // Check the StreamCapabilities of jFile to see if we can do direct
-        // preads
-        if (hdfsHasStreamCapability(jFile, "in:preadbytebuffer")) {
-            file->flags |= HDFS_FILE_SUPPORTS_DIRECT_PREAD;
+        } else if (errno != ENOTSUP) {
+            // Unexpected error. Clear it, don't set the direct flag.
+            fprintf(stderr,
+                  "hdfsOpenFile(%s): WARN: Unexpected error %d when testing "
+                  "for direct read compatibility\n", path, errno);
         }
     }
     ret = 0;
@@ -1191,8 +1052,7 @@ done:
     destroyLocalReference(env, jStrReplication);
     destroyLocalReference(env, jConfiguration); 
     destroyLocalReference(env, jPath); 
-    destroyLocalReference(env, jFile);
-    destroyLocalReference(env, jCapabilityString);
+    destroyLocalReference(env, jFile); 
     if (ret) {
         if (file) {
             if (file->file) {
@@ -1203,16 +1063,6 @@ done:
         errno = ret;
         return NULL;
     }
-    return file;
-}
-
-hdfsFile hdfsStreamBuilderBuild(struct hdfsStreamBuilder *bld)
-{
-    hdfsFile file = hdfsOpenFileImpl(bld->fs, bld->path, bld->flags,
-                  bld->bufferSize, bld->replication, bld->defaultBlockSize);
-    int prevErrno = errno;
-    hdfsStreamBuilderFree(bld);
-    errno = prevErrno;
     return file;
 }
 
@@ -1470,12 +1320,11 @@ tSize hdfsRead(hdfsFS fs, hdfsFile f, void* buffer, tSize length)
     return jVal.i;
 }
 
-// Reads using the read(ByteBuffer) API, which does fewer copies
 tSize readDirect(hdfsFS fs, hdfsFile f, void* buffer, tSize length)
 {
     // JAVA EQUIVALENT:
-    //  ByteBuffer bbuffer = ByteBuffer.allocateDirect(length) // wraps C buffer
-    //  fis.read(bbuffer);
+    //  ByteBuffer buf = ByteBuffer.allocateDirect(length) // wraps C buffer
+    //  fis.read(buf);
 
     jobject jInputStream;
     jvalue jVal;
@@ -1624,24 +1473,14 @@ tSize preadDirect(hdfsFS fs, hdfsFile f, tOffset position, void* buffer,
     }
 
     jthr = invokeMethod(env, &jVal, INSTANCE, f->file,
-            HADOOP_FS_DATA_INPUT_STREAM, "read", "(JLjava/nio/ByteBuffer;)I",
-            position, bb);
+        HADOOP_ISTRM, "read", "(JLjava/nio/ByteBuffer;)I", position, bb);
     destroyLocalReference(env, bb);
     if (jthr) {
        errno = printExceptionAndFree(env, jthr, PRINT_EXC_ALL,
            "preadDirect: FSDataInputStream#read");
        return -1;
     }
-    // Reached EOF, return 0
-    if (jVal.i < 0) {
-        return 0;
-    }
-    // 0 bytes read, return error
-    if (jVal.i == 0) {
-        errno = EINTR;
-        return -1;
-    }
-    return jVal.i;
+    return (jVal.i < 0) ? 0 : jVal.i;
 }
 
 tSize hdfsWrite(hdfsFS fs, hdfsFile f, const void* buffer, tSize length)

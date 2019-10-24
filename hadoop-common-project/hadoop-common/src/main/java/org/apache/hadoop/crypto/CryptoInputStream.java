@@ -30,24 +30,21 @@ import java.util.EnumSet;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import com.google.common.base.Preconditions;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.fs.ByteBufferPositionedReadable;
 import org.apache.hadoop.fs.ByteBufferReadable;
 import org.apache.hadoop.fs.CanSetDropBehind;
 import org.apache.hadoop.fs.CanSetReadahead;
-import org.apache.hadoop.fs.CanUnbuffer;
 import org.apache.hadoop.fs.FSExceptionMessages;
 import org.apache.hadoop.fs.HasEnhancedByteBufferAccess;
 import org.apache.hadoop.fs.HasFileDescriptor;
 import org.apache.hadoop.fs.PositionedReadable;
 import org.apache.hadoop.fs.ReadOption;
 import org.apache.hadoop.fs.Seekable;
-import org.apache.hadoop.fs.StreamCapabilities;
-import org.apache.hadoop.fs.StreamCapabilitiesPolicy;
 import org.apache.hadoop.io.ByteBufferPool;
-import org.apache.hadoop.util.StringUtils;
+
+import com.google.common.base.Preconditions;
 
 /**
  * CryptoInputStream decrypts data. It is not thread-safe. AES CTR mode is
@@ -62,11 +59,10 @@ import org.apache.hadoop.util.StringUtils;
  */
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
-public class CryptoInputStream extends FilterInputStream implements 
-    Seekable, PositionedReadable, ByteBufferReadable,
+public class CryptoInputStream extends FilterInputStream
+    implements Seekable, PositionedReadable, ByteBufferReadable,
     ByteBufferPositionedReadable, HasFileDescriptor, CanSetDropBehind,
-    CanSetReadahead, HasEnhancedByteBufferAccess, ReadableByteChannel,
-    CanUnbuffer, StreamCapabilities {
+    CanSetReadahead, HasEnhancedByteBufferAccess, ReadableByteChannel {
   private final byte[] oneByteBuf = new byte[1];
   private final CryptoCodec codec;
   private final Decryptor decryptor;
@@ -103,7 +99,7 @@ public class CryptoInputStream extends FilterInputStream implements
   private byte[] iv;
   private final boolean isByteBufferReadable;
   private final boolean isReadableByteChannel;
-  
+
   /** DirectBuffer pool */
   private final Queue<ByteBuffer> bufferPool = 
       new ConcurrentLinkedQueue<ByteBuffer>();
@@ -320,7 +316,6 @@ public class CryptoInputStream extends FilterInputStream implements
     
     super.close();
     freeBuffers();
-    codec.close();
     closed = true;
   }
   
@@ -344,9 +339,10 @@ public class CryptoInputStream extends FilterInputStream implements
     }
   }
 
-  /** Positioned read using ByteBuffers. It is thread-safe */
+   /** Positioned read using ByteBuffers. It is thread-safe */
   @Override
-  public int read(long position, final ByteBuffer buf) throws IOException {
+  public int read(long position, final ByteBuffer buf)
+      throws IOException {
     checkStream();
     try {
       int pos = buf.position();
@@ -355,10 +351,11 @@ public class CryptoInputStream extends FilterInputStream implements
         // This operation does not change the current offset of the file
         decrypt(position, buf, n, pos);
       }
+
       return n;
     } catch (ClassCastException e) {
-      throw new UnsupportedOperationException(
-          "This stream does not support " + "positioned read.");
+      throw new UnsupportedOperationException("This stream does not support " +
+          "positioned read.");
     }
   }
   
@@ -397,71 +394,43 @@ public class CryptoInputStream extends FilterInputStream implements
   }
 
   /**
-   * Decrypts the given {@link ByteBuffer} in place. {@code length} bytes are
-   * decrypted from {@code buf} starting at {@code start}.
-   * {@code buf.position()} and {@code buf.limit()} are unchanged after this
-   * method returns. This method is thread-safe.
-   *
-   * <p>
-   * This method decrypts the input buf chunk-by-chunk and writes the decrypted
-   * output back into the input buf. It uses two local buffers taken from the
-   * {@link #bufferPool} to assist in this process: one is designated as the
-   * input buffer and it stores a single chunk of the given buf, the other is
-   * designated as the output buffer, which stores the output of decrypting the
-   * input buffer. Both buffers are of size {@link #bufferSize}.
-   * </p>
-   *
-   * <p>
-   * Decryption is done by using a {@link Decryptor} and the
-   * {@link #decrypt(Decryptor, ByteBuffer, ByteBuffer, byte)} method. Once the
-   * decrypted data is written into the output buffer, is is copied back into
-   * buf. Both buffers are returned back into the pool once the entire buf is
-   * decrypted.
-   * </p>
-   *
-   * @param filePosition the current position of the file being read
-   * @param buf the {@link ByteBuffer} to decrypt
-   * @param length the number of bytes in {@code buf} to decrypt
-   * @param start the position in {@code buf} to start decrypting data from
+   * Decrypt n bytes in buf starting at start. Output is also put into buf
+   * starting at current position. buf.position() and buf.limit() should be
+   * unchanged after decryption. It is thread-safe.
    */
-  private void decrypt(long filePosition, ByteBuffer buf, int length, int start)
-      throws IOException {
-    ByteBuffer localInBuffer = null;
-    ByteBuffer localOutBuffer = null;
-
-    // Duplicate the buffer so we don't have to worry about resetting the
-    // original position and limit at the end of the method
-    buf = buf.duplicate();
-
-    int decryptedBytes = 0;
+  private void decrypt(long position, ByteBuffer buf, int n, int start)
+          throws IOException {
+    ByteBuffer localInBuffer = getBuffer();
+    ByteBuffer localOutBuffer = getBuffer();
+    final int pos = buf.position();
+    final int limit = buf.limit();
+    int len = 0;
     Decryptor localDecryptor = null;
     try {
-      localInBuffer = getBuffer();
-      localOutBuffer = getBuffer();
       localDecryptor = getDecryptor();
       byte[] localIV = initIV.clone();
-      updateDecryptor(localDecryptor, filePosition, localIV);
-      byte localPadding = getPadding(filePosition);
-      // Set proper filePosition for inputdata.
+      updateDecryptor(localDecryptor, position, localIV);
+      byte localPadding = getPadding(position);
+      // Set proper position for inputdata.
       localInBuffer.position(localPadding);
 
-      while (decryptedBytes < length) {
-        buf.position(start + decryptedBytes);
-        buf.limit(start + decryptedBytes
-            + Math.min(length - decryptedBytes, localInBuffer.remaining()));
+      while (len < n) {
+        buf.position(start + len);
+        buf.limit(start + len + Math.min(n - len, localInBuffer.remaining()));
         localInBuffer.put(buf);
         // Do decryption
         try {
           decrypt(localDecryptor, localInBuffer, localOutBuffer, localPadding);
-          buf.position(start + decryptedBytes);
-          buf.limit(start + length);
-          decryptedBytes += localOutBuffer.remaining();
+          buf.position(start + len);
+          buf.limit(limit);
+          len += localOutBuffer.remaining();
           buf.put(localOutBuffer);
         } finally {
           localPadding = afterDecryption(localDecryptor, localInBuffer,
-              filePosition + length, localIV);
+                                         position + n, localIV);
         }
       }
+      buf.position(pos);
     } finally {
       returnBuffer(localInBuffer);
       returnBuffer(localOutBuffer);
@@ -814,30 +783,5 @@ public class CryptoInputStream extends FilterInputStream implements
   @Override
   public boolean isOpen() {
     return !closed;
-  }
-
-  private void cleanDecryptorPool() {
-    decryptorPool.clear();
-  }
-
-  @Override
-  public void unbuffer() {
-    cleanBufferPool();
-    cleanDecryptorPool();
-    StreamCapabilitiesPolicy.unbuffer(in);
-  }
-
-  @Override
-  public boolean hasCapability(String capability) {
-    switch (StringUtils.toLowerCase(capability)) {
-    case StreamCapabilities.READAHEAD:
-    case StreamCapabilities.DROPBEHIND:
-    case StreamCapabilities.UNBUFFER:
-    case StreamCapabilities.READBYTEBUFFER:
-    case StreamCapabilities.PREADBYTEBUFFER:
-      return true;
-    default:
-      return false;
-    }
   }
 }
