@@ -439,14 +439,10 @@ public class RpcClient implements ClientProtocol {
         ozoneManagerClient.getDelegationToken(renewer);
     if (token != null) {
       token.setService(dtService);
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Created token {} for dtService {}", token, dtService);
-      }
+      LOG.debug("Created token {} for dtService {}", token, dtService);
     } else {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Cannot get ozone delegation token for renewer {} to " +
-            "access service {}", renewer, dtService);
-      }
+      LOG.debug("Cannot get ozone delegation token for renewer {} to access " +
+          "service {}", renewer, dtService);
     }
     return token;
   }
@@ -961,6 +957,7 @@ public class RpcClient implements ClientProtocol {
         .setVolumeName(volumeName)
         .setBucketName(bucketName)
         .setKeyName(keyName)
+        .setRefreshPipeline(true)
         .build();
     return ozoneManagerClient.getFileStatus(keyArgs);
   }
