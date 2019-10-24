@@ -756,8 +756,7 @@
   <value>0s</value>
   <description>
     Delay for first block report in seconds. Support multiple time unit
-    suffix(case insensitive), as described in dfs.heartbeat.interval.If
-    no time unit is specified then seconds is assumed
+    suffix(case insensitive), as described in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -802,8 +801,7 @@
   <description>Interval in seconds for Datanode to scan data directories and
   reconcile the difference between blocks in memory and on the disk.
   Support multiple time unit suffix(case insensitive), as described
-  in dfs.heartbeat.interval.If no time unit is specified then seconds
-  is assumed.
+  in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -844,7 +842,6 @@
     ms(millis), s(sec), m(min), h(hour), d(day)
     to specify the time (such as 2s, 2m, 1h, etc.).
     Or provide complete number in seconds (such as 30 for 30 seconds).
-    If no time unit is specified then seconds is assumed.
   </description>
 </property>
 
@@ -1054,7 +1051,6 @@
   <description>Namenode periodicity in seconds to check if
     decommission or maintenance is complete. Support multiple time unit
     suffix(case insensitive), as described in dfs.heartbeat.interval.
-    If no time unit is specified then seconds is assumed.
   </description>
 </property>
 
@@ -1185,8 +1181,7 @@
   <description>
     The number of seconds between two periodic checkpoints.
     Support multiple time unit suffix(case insensitive), as described
-    in dfs.heartbeat.interval.If no time unit is specified then seconds
-    is assumed.
+    in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -1205,8 +1200,7 @@
   <description>The SecondaryNameNode and CheckpointNode will poll the NameNode
   every 'dfs.namenode.checkpoint.check.period' seconds to query the number
   of uncheckpointed transactions. Support multiple time unit suffix(case insensitive),
-  as described in dfs.heartbeat.interval.If no time unit is specified then
-  seconds is assumed.
+  as described in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -1393,7 +1387,7 @@
 
 <property>
   <name>dfs.image.parallel.load</name>
-  <value>false</value>
+  <value>true</value>
   <description>
         If true, write sub-section entries to the fsimage index so it can
         be loaded in parallel. Also controls whether parallel loading
@@ -1403,11 +1397,6 @@
         Parallel loading is not compatible with image compression,
         so if dfs.image.compress is set to true this setting will be
         ignored and no parallel loading will occur.
-        Enabling this feature may impact rolling upgrades and downgrades if
-        the previous version does not support this feature. If the feature was
-        enabled and a downgrade is required, first set this parameter to
-        false and then save the namespace to create a fsimage with no
-        sub-sections and then perform the downgrade.
   </description>
 </property>
 
@@ -1647,8 +1636,7 @@
     The notification is sent by a datanode when it is being shutdown
     using the shutdownDatanode admin command with the upgrade option.
     Support multiple time unit suffix(case insensitive), as described
-    in dfs.heartbeat.interval.If no time unit is specified then seconds
-    is assumed.
+    in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -1717,8 +1705,7 @@
     often the logs are rolled. Note that failover triggers a log roll
     so the StandbyNode will be up to date before it becomes active.
     Support multiple time unit suffix(case insensitive), as described
-    in dfs.heartbeat.interval.If no time unit is specified then seconds
-    is assumed.
+    in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -3303,17 +3290,6 @@
 </property>
 
 <property>
-  <name>dfs.namenode.state.context.enabled</name>
-  <value>false</value>
-  <description>
-    Whether enable namenode sending back its current txnid back to client.
-    Setting this to true is required by Consistent Read from Standby feature.
-    But for regular cases, this should be set to false to avoid the overhead
-    of updating and maintaining this state.
-  </description>
-</property>
-
-<property>
   <name>dfs.namenode.ec.system.default.policy</name>
   <value>RS-6-3-1024k</value>
   <description>The default erasure coding policy name will be used
@@ -3414,9 +3390,17 @@
     BlockPlacementPolicyWithUpgradeDomain. It defines the number of
     unique upgrade domains any block's replicas should have.
     When the number of replicas is less or equal to this value, the policy
-    ensures each replica has an unique upgrade domain. When the number of
+    ensures each replica has a unique upgrade domain. When the number of
     replicas is greater than this value, the policy ensures the number of
     unique domains is at least this value.
+  </description>
+</property>
+
+<property>
+  <name>dfs.ha.zkfc.port</name>
+  <value>8019</value>
+  <description>
+    RPC port for Zookeeper Failover Controller.
   </description>
 </property>
 
@@ -3429,8 +3413,7 @@
     datanode is not yet registered with the namenode. This wait time
     reduces initial request failures after datanode restart.
     Support multiple time unit suffix(case insensitive), as described
-    in dfs.heartbeat.interval.If no time unit is specified then seconds
-    is assumed.
+    in dfs.heartbeat.interval.
   </description>
 </property>
 
@@ -4109,18 +4092,6 @@
   </description>
 </property>
 
-  <property>
-    <name>dfs.client.block.reader.remote.buffer.size</name>
-    <value>8192</value>
-    <description>
-      The output stream buffer size of a DFSClient remote read. The buffer default value is 8KB. The buffer includes
-      only some request parameters that are: block, blockToken, clientName, startOffset, len, verifyChecksum,
-      cachingStrategy.
-      It is recommended to adjust the value according to the workload, which can reduce unnecessary memory
-      usage and the frequency of the garbage collection. A value of 512 might be reasonable.
-    </description>
-  </property>
-
 <property>
   <name>dfs.content-summary.limit</name>
   <value>5000</value>
@@ -4163,28 +4134,6 @@
     value is reconfigurable via the "dfsadmin -reconfig" command.
   </description>
 </property>
-
-  <property>
-    <name>dfs.datanode.data.transfer.bandwidthPerSec</name>
-    <value>0</value>
-    <description>
-      Specifies the maximum amount of bandwidth that the data transfering can utilize for transfering block when
-      BlockConstructionStage is
-      PIPELINE_SETUP_CREATE and clientName is empty.
-      When the bandwidth value is zero, there is no limit.
-    </description>
-  </property>
-
-  <property>
-    <name>dfs.datanode.data.write.bandwidthPerSec</name>
-    <value>0</value>
-    <description>
-      Specifies the maximum amount of bandwidth that the data transfering can utilize for writing block or pipeline
-      recovery when
-      BlockConstructionStage is PIPELINE_SETUP_APPEND_RECOVERY or PIPELINE_SETUP_STREAMING_RECOVERY.
-      When the bandwidth value is zero, there is no limit.
-    </description>
-  </property>
 
 <property>
   <name>dfs.datanode.fsdataset.factory</name>
@@ -5005,16 +4954,8 @@
   <name>dfs.qjournal.http.read.timeout.ms</name>
   <value>60000</value>
   <description>
-    Timeout in milliseconds when reading from a HTTP connection from remote
+    Timeout in milliseconds when reading from an HTTP connection from remote
     journals.
-  </description>
-</property>
-
-<property>
-  <name>dfs.qjournal.parallel-read.num-threads</name>
-  <value>5</value>
-  <description>
-    Number of threads per JN to be used for tailing edits.
   </description>
 </property>
 
@@ -5354,17 +5295,6 @@
       The read/write path for the leveldb-based alias map
       (org.apache.hadoop.hdfs.server.common.blockaliasmap.impl.LevelDBFileRegionAliasMap).
       The path has to be explicitly configured when this alias map is used.
-    </description>
-  </property>
-
-  <property>
-  <name>dfs.provided.acls.import.enabled</name>
-    <value>false</value>
-    <description>
-      Set to true to inherit ACLs (Access Control Lists) from remote stores
-      during mount. Disabled by default, i.e., ACLs are not inherited from
-      remote stores. Note had HDFS ACLs have to be enabled
-      (dfs.namenode.acls.enabled must be set to true) for this to take effect.
     </description>
   </property>
 
