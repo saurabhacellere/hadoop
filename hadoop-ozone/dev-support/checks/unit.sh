@@ -15,14 +15,13 @@
 # limitations under the License.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$DIR/../../.." || exit 1
-
+set -x
 export MAVEN_OPTS="-Xmx4096m"
-mvn -B -fn test -f pom.ozone.xml -pl \!:hadoop-ozone-integration-test,\!:hadoop-ozone-filesystem,\!:hadoop-ozone-tools "$@"
+mvn -fn test -f pom.ozone.xml -pl \!:hadoop-ozone-integration-test,\!:hadoop-ozone-filesystem,\!:hadoop-ozone-tools
 
-REPORT_DIR=${OUTPUT_DIR:-"$DIR/../../../target/unit"}
+REPORT_DIR=${OUTPUT_DIR:-"$DIR/../../../target"}
 mkdir -p "$REPORT_DIR"
 
-# shellcheck source=hadoop-ozone/dev-support/checks/_mvn_unit_report.sh
 source "$DIR/_mvn_unit_report.sh"
 
 if [[ -s "$REPORT_DIR/summary.txt" ]] ; then

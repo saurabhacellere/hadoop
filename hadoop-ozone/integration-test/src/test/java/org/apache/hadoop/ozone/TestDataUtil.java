@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Scanner;
