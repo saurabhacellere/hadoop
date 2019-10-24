@@ -79,7 +79,7 @@ public interface RatisTestHelper {
 
     public ClientProtocol newOzoneClient()
         throws IOException {
-      return new RpcClient(conf, null);
+      return new RpcClient(conf);
     }
 
     @Override
