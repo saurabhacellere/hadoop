@@ -123,6 +123,7 @@ import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.KEY_
 import static org.apache.hadoop.ozone.om.exceptions.OMException.ResultCodes.VOLUME_NOT_FOUND;
 import static org.apache.hadoop.ozone.om.lock.OzoneManagerLock.Resource.BUCKET_LOCK;
 import static org.apache.hadoop.ozone.security.acl.OzoneObj.ResourceType.KEY;
+import static org.apache.hadoop.ozone.security.acl.OzoneObj.ResourceType.OPEN_KEY;
 import static org.apache.hadoop.util.Time.monotonicNow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1654,28 +1655,28 @@ public class KeyManagerImpl implements KeyManager {
     metadataManager.getLock().acquireReadLock(BUCKET_LOCK, volume, bucket);
     try {
       validateBucket(volume, bucket);
-      OmKeyInfo keyInfo = null;
-      try {
-        OzoneFileStatus fileStatus = getFileStatus(args);
-        keyInfo = fileStatus.getKeyInfo();
-        if (keyInfo == null) {
-          // the key does not exist, but it is a parent "dir" of some key
-          // let access be determined based on volume/bucket/prefix ACL
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("key:{} is non-existent parent, permit access to user:{}",
-                keyName, context.getClientUgi());
-          }
-          return true;
-        }
-      } catch (OMException e) {
-        if (e.getResult() == FILE_NOT_FOUND) {
-          keyInfo = metadataManager.getOpenKeyTable().get(objectKey);
+      OmKeyInfo keyInfo;
+
+      if (ozObject.getResourceType() == OPEN_KEY) {
+        keyInfo = metadataManager.getOpenKeyTable().get(objectKey);
+      } else {
+        try {
+          OzoneFileStatus fileStatus = getFileStatus(args);
+          keyInfo = fileStatus.getKeyInfo();
+        } catch (IOException e) {
+          throw new OMException("Key not found, checkAccess failed. Key:" +
+              objectKey, KEY_NOT_FOUND);
         }
       }
 
       if (keyInfo == null) {
-        throw new OMException("Key not found, checkAccess failed. Key:" +
-            objectKey, KEY_NOT_FOUND);
+        // the key does not exist, but it is a parent "dir" of some key
+        // let access be determined based on volume/bucket/prefix ACL
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("key:{} is non-existent parent, permit access to user:{}",
+              keyName, context.getClientUgi());
+        }
+        return true;
       }
 
       boolean hasAccess = OzoneAclUtil.checkAclRight(
