@@ -24,14 +24,16 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 
+import org.apache.curator.shaded.com.google.common.collect.Iterators;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.fs.StorageType;
@@ -79,6 +81,43 @@ public class DatanodeDescriptor extends DatanodeInfo {
     BlockTargetPair(Block block, DatanodeStorageInfo[] targets) {
       this.block = block;
       this.targets = targets;
+    }
+  }
+
+  /** A BlockTargetPair queue. */
+  private static class BlockQueue<E> {
+    private final Queue<E> blockq = new LinkedList<>();
+
+    /** Size of the queue */
+    synchronized int size() {return blockq.size();}
+
+    /** Enqueue */
+    synchronized boolean offer(E e) { 
+      return blockq.offer(e);
+    }
+
+    /** Dequeue */
+    synchronized List<E> poll(int numBlocks) {
+      if (numBlocks <= 0 || blockq.isEmpty()) {
+        return null;
+      }
+
+      List<E> results = new ArrayList<>();
+      for(; !blockq.isEmpty() && numBlocks > 0; numBlocks--) {
+        results.add(blockq.poll());
+      }
+      return results;
+    }
+
+    /**
+     * Returns <tt>true</tt> if the queue contains the specified element.
+     */
+    synchronized boolean contains(E e) {
+      return blockq.contains(e);
+    }
+
+    synchronized void clear() {
+      blockq.clear();
     }
   }
 
@@ -158,14 +197,13 @@ public class DatanodeDescriptor extends DatanodeInfo {
   private long bandwidth;
 
   /** A queue of blocks to be replicated by this datanode */
-  private final BlockingQueue<BlockTargetPair> replicateBlocks =
-      new LinkedBlockingQueue<>();
+  private final BlockQueue<BlockTargetPair> replicateBlocks =
+      new BlockQueue<>();
   /** A queue of blocks to be erasure coded by this datanode */
-  private final BlockingQueue<BlockECReconstructionInfo> erasurecodeBlocks =
-      new LinkedBlockingQueue<>();
+  private final BlockQueue<BlockECReconstructionInfo> erasurecodeBlocks =
+      new BlockQueue<>();
   /** A queue of blocks to be recovered by this datanode */
-  private final BlockingQueue<BlockInfo> recoverBlocks =
-      new LinkedBlockingQueue<>();
+  private final BlockQueue<BlockInfo> recoverBlocks = new BlockQueue<>();
   /** A set of blocks to be invalidated by this datanode */
   private final LightWeightHashSet<Block> invalidateBlocks =
       new LightWeightHashSet<>();
@@ -533,67 +571,66 @@ public class DatanodeDescriptor extends DatanodeInfo {
   }
 
   private static class BlockIterator implements Iterator<BlockInfo> {
-    private int index = 0;
-    private final List<Iterator<BlockInfo>> iterators;
-    
-    private BlockIterator(final int startBlock,
-                          final DatanodeStorageInfo... storages) {
-      if(startBlock < 0) {
-        throw new IllegalArgumentException(
-            "Illegal value startBlock = " + startBlock);
-      }
+    private final Iterator<Iterator<BlockInfo>> iterator;
+    private Iterator<BlockInfo> currentIter;
+
+    private BlockIterator(final DatanodeStorageInfo... storages) {
+      Preconditions.checkNotNull(storages);
+
       List<Iterator<BlockInfo>> iterators = new ArrayList<>();
-      int s = startBlock;
-      int sumBlocks = 0;
       for (DatanodeStorageInfo e : storages) {
-        int numBlocks = e.numBlocks();
-        sumBlocks += numBlocks;
-        if(sumBlocks <= startBlock) {
-          s -= numBlocks;
-        } else {
           iterators.add(e.getBlockIterator());
-        }
       }
-      this.iterators = Collections.unmodifiableList(iterators);
-      // skip to the storage containing startBlock
-      for(; s > 0 && hasNext(); s--) {
-        next();
-      }
+      this.iterator = Iterators.cycle(iterators);
+      this.currentIter = Iterators.emptyIterator();
     }
 
     @Override
     public boolean hasNext() {
-      update();
-      return index < iterators.size() && iterators.get(index).hasNext();
+      while (this.iterator.hasNext()) {
+        final Iterator<BlockInfo> inner = this.iterator.next();
+        if (!inner.hasNext()) {
+          this.iterator.remove();
+          continue;
+        }
+        this.currentIter = inner;
+        return true;
+      }
+      this.currentIter = Iterators.emptyIterator();
+      return false;
     }
 
+    /**
+     * Returns the next element in the iteration. This iterator returns
+     * {@link BlockInfo} objects by polling from each
+     * {@link DatanodeStorageInfo} in a round-robin fashion. This is useful for
+     * distributing work per-block in a way that will evenly assign tasks to
+     * each disk.
+     *
+     * <pre>
+     * Storage A: AAA
+     * Storage B: BBBB
+     * Storage C: CCC
+     *
+     * Iterator: ABCABCABCB
+     * </pre>
+     *
+     * @return the next element in the iteration
+     * @throws NoSuchElementException if the iteration has no more elements
+     */
     @Override
     public BlockInfo next() {
-      update();
-      return iterators.get(index).next();
+      return this.currentIter.next();
     }
     
     @Override
     public void remove() {
       throw new UnsupportedOperationException("Remove unsupported.");
     }
-    
-    private void update() {
-      while(index < iterators.size() - 1 && !iterators.get(index).hasNext()) {
-        index++;
-      }
-    }
   }
 
   Iterator<BlockInfo> getBlockIterator() {
-    return getBlockIterator(0);
-  }
-
-  /**
-   * Get iterator, which starts iterating from the specified block.
-   */
-  Iterator<BlockInfo> getBlockIterator(final int startBlock) {
-    return new BlockIterator(startBlock, getStorageInfos());
+    return new BlockIterator(getStorageInfos());
   }
 
   void incrementPendingReplicationWithoutTargets() {
@@ -670,22 +707,19 @@ public class DatanodeDescriptor extends DatanodeInfo {
   }
 
   List<BlockTargetPair> getReplicationCommand(int maxTransfers) {
-    List<BlockTargetPair> list = new ArrayList<>();
-    replicateBlocks.drainTo(list, maxTransfers);
-    return list;
+    return replicateBlocks.poll(maxTransfers);
   }
 
   public List<BlockECReconstructionInfo> getErasureCodeCommand(
       int maxTransfers) {
-    List<BlockECReconstructionInfo> list = new ArrayList<>();
-    erasurecodeBlocks.drainTo(list, maxTransfers);
-    return list;
+    return erasurecodeBlocks.poll(maxTransfers);
   }
 
   public BlockInfo[] getLeaseRecoveryCommand(int maxTransfers) {
-    List<BlockInfo> list = new ArrayList<>();
-    recoverBlocks.drainTo(list, maxTransfers);
-    return (list.isEmpty()) ? null : list.toArray(new BlockInfo[0]);
+    List<BlockInfo> blocks = recoverBlocks.poll(maxTransfers);
+    if(blocks == null)
+      return null;
+    return blocks.toArray(new BlockInfo[blocks.size()]);
   }
 
   /**
