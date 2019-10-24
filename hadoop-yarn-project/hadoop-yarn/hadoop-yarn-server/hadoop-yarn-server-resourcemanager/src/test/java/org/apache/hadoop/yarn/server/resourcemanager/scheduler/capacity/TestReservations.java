@@ -34,7 +34,6 @@ import java.util.Map;
 
 import com.google.common.collect.ImmutableMap;
 import org.apache.hadoop.test.GenericTestUtils;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -55,6 +54,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.ahs.RMApplicationHistoryWri
 import org.apache.hadoop.yarn.server.resourcemanager.metrics.SystemMetricsPublisher;
 import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMNodeLabelsManager;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
+import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpirer;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ActiveUsersManager;
@@ -916,8 +916,8 @@ public class TestReservations {
     RMApplicationHistoryWriter writer = mock(RMApplicationHistoryWriter.class);
     SystemMetricsPublisher publisher = mock(SystemMetricsPublisher.class);
     RMContext rmContext = mock(RMContext.class);
-    ContainerAllocationExpired expirer =
-      mock(ContainerAllocationExpired.class);
+    ContainerAllocationExpirer expirer =
+      mock(ContainerAllocationExpirer.class);
     DrainDispatcher drainDispatcher = new DrainDispatcher();
     when(rmContext.getContainerAllocationExpirer()).thenReturn(expirer);
     when(rmContext.getDispatcher()).thenReturn(drainDispatcher);
@@ -943,27 +943,119 @@ public class TestReservations {
 
     // no reserved containers
     NodeId unreserveId = app_0.getNodeIdToUnreserve(priorityMap, capability,
-            cs.getResourceCalculator());
+            cs.getResourceCalculator(), node_0,
+            SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     assertEquals(null, unreserveId);
 
     // no reserved containers - reserve then unreserve
     app_0.reserve(node_0, priorityMap, rmContainer_1, container_1);
     app_0.unreserve(priorityMap, node_0, rmContainer_1);
     unreserveId = app_0.getNodeIdToUnreserve(priorityMap, capability,
-        cs.getResourceCalculator());
+        cs.getResourceCalculator(), node_0,
+        SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     assertEquals(null, unreserveId);
 
     // no container large enough is reserved
     app_0.reserve(node_0, priorityMap, rmContainer_1, container_1);
     unreserveId = app_0.getNodeIdToUnreserve(priorityMap, capability,
-        cs.getResourceCalculator());
+        cs.getResourceCalculator(), node_0,
+        SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     assertEquals(null, unreserveId);
 
     // reserve one that is now large enough
     app_0.reserve(node_1, priorityMap, rmContainer, container);
     unreserveId = app_0.getNodeIdToUnreserve(priorityMap, capability,
-        cs.getResourceCalculator());
+        cs.getResourceCalculator(), node_0,
+        SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     assertEquals(node_1.getNodeID(), unreserveId);
+  }
+
+  private FiCaSchedulerApp getFiCaSchedulerApp() {
+    final String user = "user";
+    final ApplicationAttemptId appAttemptId = TestUtils
+        .getMockApplicationAttemptId(0, 0);
+    LeafQueue a = stubLeafQueue((LeafQueue) queues.get(A));
+    FiCaSchedulerApp app = new FiCaSchedulerApp(appAttemptId, user, a,
+        mock(ActiveUsersManager.class), spyRMContext);
+    return app;
+  }
+
+  private RMContainer getRMContainerMock(String nodeLabel, boolean hasIncreaseReservation, int memory) {
+    RMContainer container = mock(RMContainer.class);
+    when(container.getNodeLabelExpression()).thenReturn(nodeLabel);
+    Resource reservedResource = Resources.createResource(memory * GB, 0);
+    when(container.getReservedResource()).thenReturn(reservedResource);
+    return container;
+  }
+
+  private FiCaSchedulerNode getFiCaSchedulerNodeMock(String nodeLabel) {
+    FiCaSchedulerNode node = mock(FiCaSchedulerNode.class);
+    when(node.getPartition()).thenReturn(nodeLabel);
+    return node;
+  }
+
+  @Test
+  public void testCanContainerBeUnreservedWithoutNodeLabel() throws Exception {
+    CapacitySchedulerConfiguration csConf = new CapacitySchedulerConfiguration();
+    setup(csConf);
+    FiCaSchedulerApp app = getFiCaSchedulerApp();
+
+    FiCaSchedulerNode node = getFiCaSchedulerNodeMock(RMNodeLabelsManager.NO_LABEL);
+    RMContainer container = getRMContainerMock(RMNodeLabelsManager.NO_LABEL, false, 10);
+
+    Resource resourceNeedUnreserve = Resources.createResource(10 * GB, 0);
+    assertTrue(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY));
+    assertTrue(app.canContainerBeUnreserved(container,  resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY));
+  }
+
+  @Test
+  public void testCanContainerBeUnreservedWithNodeLabel() throws Exception {
+    CapacitySchedulerConfiguration csConf = new CapacitySchedulerConfiguration();
+    setup(csConf);
+    FiCaSchedulerApp app = getFiCaSchedulerApp();
+
+    FiCaSchedulerNode node = getFiCaSchedulerNodeMock("dummy");
+    RMContainer container = getRMContainerMock(RMNodeLabelsManager.NO_LABEL, false, 10);
+
+    Resource resourceNeedUnreserve = Resources.createResource(10 * GB, 0);
+    assertFalse(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY));
+    assertTrue(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY));
+  }
+
+  @Test
+  public void testCanContainerBeUnreservedWithContainerNodeLabel() throws Exception {
+    CapacitySchedulerConfiguration csConf = new CapacitySchedulerConfiguration();
+    setup(csConf);
+    FiCaSchedulerApp app = getFiCaSchedulerApp();
+
+    FiCaSchedulerNode node = getFiCaSchedulerNodeMock("dummy");
+    RMContainer container = getRMContainerMock("dummy", false, 10);
+
+    Resource resourceNeedUnreserve = Resources.createResource(10 * GB, 0);
+    assertTrue(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY));
+    assertFalse(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY));
+  }
+
+  @Test
+  public void testCanContainerBeUnreservedWithoutEnoughResources() throws Exception {
+    CapacitySchedulerConfiguration csConf = new CapacitySchedulerConfiguration();
+    setup(csConf);
+    FiCaSchedulerApp app = getFiCaSchedulerApp();
+
+    FiCaSchedulerNode node = getFiCaSchedulerNodeMock(RMNodeLabelsManager.NO_LABEL);
+    RMContainer container = getRMContainerMock(RMNodeLabelsManager.NO_LABEL, false, 9);
+
+    Resource resourceNeedUnreserve = Resources.createResource(10 * GB, 0);
+    assertFalse(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY));
+    assertFalse(app.canContainerBeUnreserved(container, resourceNeedUnreserve,
+        new DefaultResourceCalculator(), node, SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY));
   }
 
   @Test
@@ -990,8 +1082,8 @@ public class TestReservations {
     RMApplicationHistoryWriter writer = mock(RMApplicationHistoryWriter.class);
     SystemMetricsPublisher publisher = mock(SystemMetricsPublisher.class);
     RMContext rmContext = mock(RMContext.class);
-    ContainerAllocationExpired expirer =
-      mock(ContainerAllocationExpired.class);
+    ContainerAllocationExpirer expirer =
+      mock(ContainerAllocationExpirer.class);
     DrainDispatcher drainDispatcher = new DrainDispatcher();
     when(rmContext.getContainerAllocationExpirer()).thenReturn(expirer);
     when(rmContext.getDispatcher()).thenReturn(drainDispatcher);
@@ -1010,14 +1102,14 @@ public class TestReservations {
 
     // nothing reserved
     RMContainer toUnreserveContainer = app_0.findNodeToUnreserve(node_1,
-            priorityMap, capability);
+            priorityMap, capability, SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     assertTrue(toUnreserveContainer == null);
 
     // reserved but scheduler doesn't know about that node.
     app_0.reserve(node_1, priorityMap, rmContainer, container);
     node_1.reserveResource(app_0, priorityMap, rmContainer);
     toUnreserveContainer = app_0.findNodeToUnreserve(node_1,
-            priorityMap, capability);
+            priorityMap, capability, SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     assertTrue(toUnreserveContainer == null);
   }
 

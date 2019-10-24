@@ -205,8 +205,6 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
   private AtomicLong unconfirmedAllocatedMem = new AtomicLong();
   private AtomicInteger unconfirmedAllocatedVcores = new AtomicInteger();
 
-  private String nodeLabelExpression;
-
   public SchedulerApplicationAttempt(ApplicationAttemptId applicationAttemptId, 
       String user, Queue queue, AbstractUsersManager abstractUsersManager,
       RMContext rmContext) {
@@ -228,8 +226,6 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
         unmanagedAM = appSubmissionContext.getUnmanagedAM();
         this.logAggregationContext =
             appSubmissionContext.getLogAggregationContext();
-        this.nodeLabelExpression =
-            appSubmissionContext.getNodeLabelExpression();
       }
       applicationSchedulingEnvs = rmApp.getApplicationSchedulingEnvs();
     }
@@ -442,6 +438,10 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
   @Private
   public Resource getCurrentReservation() {
     return attemptResourceUsage.getReserved();
+  }
+
+  public Resource getCurrentReservation(String partition) {
+    return attemptResourceUsage.getReserved(partition);
   }
   
   public Queue getQueue() {
@@ -1472,10 +1472,5 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
 
   public Map<String, String> getApplicationSchedulingEnvs() {
     return this.applicationSchedulingEnvs;
-  }
-
-  @Override
-  public String getPartition() {
-    return nodeLabelExpression == null ? "" : nodeLabelExpression;
   }
 }
