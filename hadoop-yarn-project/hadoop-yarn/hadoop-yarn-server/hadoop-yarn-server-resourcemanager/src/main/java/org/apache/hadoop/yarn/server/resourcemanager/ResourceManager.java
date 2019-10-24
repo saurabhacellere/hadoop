@@ -94,7 +94,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEventType;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.monitor.RMAppLifetimeMonitor;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpirer;
+import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpired;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEventType;
@@ -267,22 +267,6 @@ public class ResourceManager extends CompositeService
     this.rmContext = new RMContextImpl();
     rmContext.setResourceManager(this);
 
-    // Set HA configuration should be done before login
-    this.rmContext.setHAEnabled(HAUtil.isHAEnabled(this.conf));
-    if (this.rmContext.isHAEnabled()) {
-      HAUtil.verifyAndSetConfiguration(this.conf);
-    }
-
-    // Set UGI and do login
-    // If security is enabled, use login user
-    // If security is not enabled, use current user
-    this.rmLoginUGI = UserGroupInformation.getCurrentUser();
-    try {
-      doSecureLogin();
-    } catch(IOException ie) {
-      throw new YarnRuntimeException("Failed to login", ie);
-    }
-
     this.configurationProvider =
         ConfigurationProviderFactory.getConfigurationProvider(conf);
     this.configurationProvider.init(this.conf);
@@ -301,6 +285,22 @@ public class ResourceManager extends CompositeService
     loadConfigurationXml(YarnConfiguration.YARN_SITE_CONFIGURATION_FILE);
 
     validateConfigs(this.conf);
+    
+    // Set HA configuration should be done before login
+    this.rmContext.setHAEnabled(HAUtil.isHAEnabled(this.conf));
+    if (this.rmContext.isHAEnabled()) {
+      HAUtil.verifyAndSetConfiguration(this.conf);
+    }
+
+    // Set UGI and do login
+    // If security is enabled, use login user
+    // If security is not enabled, use current user
+    this.rmLoginUGI = UserGroupInformation.getCurrentUser();
+    try {
+      doSecureLogin();
+    } catch(IOException ie) {
+      throw new YarnRuntimeException("Failed to login", ie);
+    }
 
     // register the handlers for all AlwaysOn services using setupDispatcher().
     rmDispatcher = setupDispatcher();
@@ -575,13 +575,11 @@ public class ResourceManager extends CompositeService
   protected SystemMetricsPublisher createSystemMetricsPublisher() {
     List<SystemMetricsPublisher> publishers =
         new ArrayList<SystemMetricsPublisher>();
-    if (YarnConfiguration.timelineServiceV1Enabled(conf) &&
-        YarnConfiguration.systemMetricsPublisherEnabled(conf)) {
+    if (YarnConfiguration.timelineServiceV1Enabled(conf)) {
       SystemMetricsPublisher publisherV1 = new TimelineServiceV1Publisher();
       publishers.add(publisherV1);
     }
-    if (YarnConfiguration.timelineServiceV2Enabled(conf) &&
-        YarnConfiguration.systemMetricsPublisherEnabled(conf)) {
+    if (YarnConfiguration.timelineServiceV2Enabled(conf)) {
       // we're dealing with the v.2.x publisher
       LOG.info("system metrics publisher with the timeline service V2 is "
           + "configured");
@@ -640,7 +638,7 @@ public class ResourceManager extends CompositeService
     private DelegationTokenRenewer delegationTokenRenewer;
     private EventHandler<SchedulerEvent> schedulerDispatcher;
     private ApplicationMasterLauncher applicationMasterLauncher;
-    private ContainerAllocationExpirer containerAllocationExpirer;
+    private ContainerAllocationExpired containerAllocationExpired;
     private ResourceManager rm;
     private boolean fromActive = false;
     private StandByTransitionRunnable standByTransitionRunnable;
@@ -658,9 +656,9 @@ public class ResourceManager extends CompositeService
       rmSecretManagerService = createRMSecretManagerService();
       addService(rmSecretManagerService);
 
-      containerAllocationExpirer = new ContainerAllocationExpirer(rmDispatcher);
-      addService(containerAllocationExpirer);
-      rmContext.setContainerAllocationExpirer(containerAllocationExpirer);
+      containerAllocationExpired = new ContainerAllocationExpired(rmDispatcher);
+      addService(containerAllocationExpired);
+      rmContext.setContainerAllocationExpirer(containerAllocationExpired);
 
       AMLivelinessMonitor amLivelinessMonitor = createAMLivelinessMonitor();
       addService(amLivelinessMonitor);
@@ -1146,7 +1144,7 @@ public class ResourceManager extends CompositeService
   }
 
   /**
-   * Return an HttpServer.Builder that the journalnode / namenode / secondary
+   * Return a HttpServer.Builder that the journalnode / namenode / secondary
    * namenode can use to initialize their HTTP / HTTPS server.
    *
    * @param conf configuration object
