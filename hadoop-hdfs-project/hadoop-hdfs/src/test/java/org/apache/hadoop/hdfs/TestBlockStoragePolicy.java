@@ -85,6 +85,7 @@ public class TestBlockStoragePolicy {
   static final byte ALLSSD  = HdfsConstants.ALLSSD_STORAGE_POLICY_ID;
   static final byte LAZY_PERSIST  = HdfsConstants.MEMORY_STORAGE_POLICY_ID;
   static final byte PROVIDED  = HdfsConstants.PROVIDED_STORAGE_POLICY_ID;
+  static final byte DISK_PROVIDED  = HdfsConstants.DISK_PROVIDED_STORAGE_POLICY_ID;
 
   @Test (timeout=300000)
   public void testConfigKeyEnabled() throws IOException {
@@ -1546,28 +1547,4 @@ public class TestBlockStoragePolicy {
       }
     }
   }
-
-  @Test
-  public void testBlockAliasCheckAccess() {
-    testBlockAliasCheckAccessResult(
-        "hello".getBytes(), "hello".getBytes(), true);
-  }
-  private void testBlockAliasCheckAccessResult(byte[] requested,
-      byte[] allowed, boolean expAccess) {
-    try {
-      BlockTokenSecretManager.checkAccessBlockAlias(requested, allowed);
-      if (!expAccess) {
-        fail("No expected access with allowed BlockAlias"
-            + Arrays.toString(allowed) + " and requested BlockAlias"
-            + Arrays.toString(requested));
-      }
-    } catch (SecretManager.InvalidToken e) {
-      if (expAccess) {
-        fail("Expected access with allowed BlockAlias"
-            + Arrays.toString(allowed) + " and requested BlockAlias"
-            + Arrays.toString(requested));
-      }
-    }
-  }
-
 }
