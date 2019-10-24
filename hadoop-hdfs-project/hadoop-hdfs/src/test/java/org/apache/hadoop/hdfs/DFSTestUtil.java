@@ -368,25 +368,6 @@ public class DFSTestUtil {
     createFiles(fs, topdir, (short)3);
   }
 
-  public static String readResoucePlainFile(
-      String fileName) throws IOException {
-    File file = new File(System.getProperty(
-        "test.cache.data", "build/test/cache"), fileName);
-    StringBuilder s = new StringBuilder();
-    try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-      String line;
-      while ((line = reader.readLine()) != null) {
-        line = line.trim();
-        if (line.length() <= 0 || line.startsWith("#")) {
-          continue;
-        }
-        s.append(line);
-        s.append("\n");
-      }
-    }
-    return s.toString();
-  }
-
   public static byte[] readFileAsBytes(FileSystem fs, Path fileName) throws IOException {
     try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
       IOUtils.copyBytes(fs.open(fileName), os, 1024);
@@ -556,24 +537,17 @@ public class DFSTestUtil {
     }
   }
 
-  public static void waitForReplication(MiniDFSCluster cluster, ExtendedBlock b,
-      int racks, int replicas, int neededReplicas)
-      throws TimeoutException, InterruptedException {
-    waitForReplication(cluster, b, racks, replicas, neededReplicas, 0);
-  }
-
   /*
    * Wait up to 20s for the given block to be replicated across
    * the requested number of racks, with the requested number of
    * replicas, and the requested number of replicas still needed.
    */
   public static void waitForReplication(MiniDFSCluster cluster, ExtendedBlock b,
-      int racks, int replicas, int neededReplicas, int neededDomains)
+      int racks, int replicas, int neededReplicas)
       throws TimeoutException, InterruptedException {
     int curRacks = 0;
     int curReplicas = 0;
     int curNeededReplicas = 0;
-    int curDomains = 0;
     int count = 0;
     final int ATTEMPTS = 20;
 
@@ -584,21 +558,17 @@ public class DFSTestUtil {
       curRacks = r[0];
       curReplicas = r[1];
       curNeededReplicas = r[2];
-      curDomains = r[3];
       count++;
     } while ((curRacks != racks ||
               curReplicas != replicas ||
-        curNeededReplicas != neededReplicas ||
-        (neededDomains != 0 && curDomains != neededDomains))
-        && count < ATTEMPTS);
+              curNeededReplicas != neededReplicas) && count < ATTEMPTS);
 
     if (count == ATTEMPTS) {
       throw new TimeoutException("Timed out waiting for replication."
           + " Needed replicas = "+neededReplicas
           + " Cur needed replicas = "+curNeededReplicas
           + " Replicas = "+replicas+" Cur replicas = "+curReplicas
-          + " Racks = "+racks+" Cur racks = "+curRacks
-          + " Domains = "+neededDomains+" Cur domains = "+curDomains);
+          + " Racks = "+racks+" Cur racks = "+curRacks);
     }
   }
 
@@ -1116,7 +1086,7 @@ public class DFSTestUtil {
       new Sender(out).transferBlock(b, new Token<BlockTokenIdentifier>(),
           dfsClient.clientName, new DatanodeInfo[]{datanodes[1]},
           new StorageType[]{StorageType.DEFAULT},
-          new String[0]);
+          new String[0], null);
       out.flush();
 
       return BlockOpResponseProto.parseDelimitedFrom(in);
