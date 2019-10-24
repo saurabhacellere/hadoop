@@ -904,7 +904,7 @@
   <name>fs.protected.directories</name>
   <value></value>
   <description>A comma-separated list of directories which cannot
-    be deleted or renamed even by the superuser unless they are empty. This
+    be deleted even by the superuser unless they are empty. This
     setting can be used to guard important system directories
     against accidental deletion due to administrator error.
   </description>
@@ -1552,7 +1552,6 @@
     write operation succeeds.
   </description>
 </property>
-
 
 <property>
     <name>fs.s3a.s3guard.cli.prune.age</name>
