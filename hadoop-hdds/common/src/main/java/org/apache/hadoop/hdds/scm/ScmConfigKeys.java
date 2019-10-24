@@ -105,11 +105,6 @@ public final class ScmConfigKeys {
   // TODO: Set to 1024 once RATIS issue around purge is fixed.
   public static final int DFS_CONTAINER_RATIS_LOG_PURGE_GAP_DEFAULT =
       1000000;
-
-  public static final String DFS_CONTAINER_RATIS_LEADER_NUM_PENDING_REQUESTS =
-      "dfs.container.ratis.leader.num.pending.requests";
-  public static final int
-      DFS_CONTAINER_RATIS_LEADER_NUM_PENDING_REQUESTS_DEFAULT = 4096;
   // expiry interval stateMachineData cache entry inside containerStateMachine
   public static final String
       DFS_CONTAINER_RATIS_STATEMACHINEDATA_CACHE_EXPIRY_INTERVAL =
@@ -318,6 +313,19 @@ public final class ScmConfigKeys {
   public static final String OZONE_SCM_PIPELINE_OWNER_CONTAINER_COUNT =
       "ozone.scm.pipeline.owner.container.count";
   public static final int OZONE_SCM_PIPELINE_OWNER_CONTAINER_COUNT_DEFAULT = 3;
+  // Pipeline placement policy:
+  // the max number of pipelines can a single datanode be engaged in.
+  public static final String OZONE_DATANODE_MAX_PIPELINE_ENGAGEMENT =
+          "ozone.scm.datanode.max.pipeline.engagement";
+  // Setting to zero by default means this limit doesn't take effect.
+  public static final int OZONE_DATANODE_MAX_PIPELINE_ENGAGEMENT_DEFAULT = 0;
+
+  // Upper limit for how many pipelines can be created.
+  // Only for test purpose now.
+  public static final String OZONE_SCM_PIPELINE_NUMBER_LIMIT =
+      "ozone.scm.datanode.pipeline.number.limit";
+  // Setting to zero by default means this limit doesn't take effect.
+  public static final int OZONE_SCM_PIPELINE_NUMBER_LIMIT_DEFAULT = 0;
 
   public static final String
       OZONE_SCM_KEY_VALUE_CONTAINER_DELETION_CHOOSING_POLICY =

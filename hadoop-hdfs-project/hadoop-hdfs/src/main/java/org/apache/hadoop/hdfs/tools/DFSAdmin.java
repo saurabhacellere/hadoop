@@ -434,7 +434,7 @@ public class DFSAdmin extends FsShell {
   private static final String commonUsageSummary =
     "\t[-report [-live] [-dead] [-decommissioning] " +
     "[-enteringmaintenance] [-inmaintenance]]\n" +
-    "\t[-safemode <enter | leave | get | wait | forceExit>]\n" +
+    "\t[-safemode <enter | leave | get | wait>]\n" +
     "\t[-saveNamespace [-beforeShutdown]]\n" +
     "\t[-rollEdits]\n" +
     "\t[-restoreFailedStorage true|false|check]\n" +
@@ -2447,7 +2447,7 @@ public class DFSAdmin extends FsShell {
       printUsage(cmd);
     } catch (RemoteException e) {
       //
-      // This is a error returned by hadoop server. Print
+      // This is an error returned by hadoop server. Print
       // out the first line of the error message, ignore the stack trace.
       exitCode = -1;
       debugException = e;
