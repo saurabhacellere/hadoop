@@ -60,6 +60,7 @@ public class AbfsClient implements Closeable {
   private final String filesystem;
   private final AbfsConfiguration abfsConfiguration;
   private final String userAgent;
+  private final LatencyTracker latencyTracker;
 
   private final AccessTokenProvider tokenProvider;
 
@@ -67,7 +68,8 @@ public class AbfsClient implements Closeable {
   public AbfsClient(final URL baseUrl, final SharedKeyCredentials sharedKeyCredentials,
                     final AbfsConfiguration abfsConfiguration,
                     final ExponentialRetryPolicy exponentialRetryPolicy,
-                    final AccessTokenProvider tokenProvider) {
+                    final AccessTokenProvider tokenProvider,
+                    final LatencyTracker latencyTracker) {
     this.baseUrl = baseUrl;
     this.sharedKeyCredentials = sharedKeyCredentials;
     String baseUrlString = baseUrl.toString();
@@ -88,6 +90,7 @@ public class AbfsClient implements Closeable {
 
     this.userAgent = initializeUserAgent(abfsConfiguration, sslProviderName);
     this.tokenProvider = tokenProvider;
+    this.latencyTracker = latencyTracker;
   }
 
   @Override
@@ -99,6 +102,10 @@ public class AbfsClient implements Closeable {
 
   public String getFileSystem() {
     return filesystem;
+  }
+
+  protected LatencyTracker getLatencyTracker() {
+    return latencyTracker;
   }
 
   ExponentialRetryPolicy getRetryPolicy() {
