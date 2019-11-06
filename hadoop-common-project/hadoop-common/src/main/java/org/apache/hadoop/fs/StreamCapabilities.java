@@ -70,7 +70,6 @@ public interface StreamCapabilities {
    * {@link ByteBufferPositionedReadable#read(long, java.nio.ByteBuffer)}.
    */
   String PREADBYTEBUFFER = "in:preadbytebuffer";
-
   /**
    * Capabilities that a stream can support and be queried for.
    */

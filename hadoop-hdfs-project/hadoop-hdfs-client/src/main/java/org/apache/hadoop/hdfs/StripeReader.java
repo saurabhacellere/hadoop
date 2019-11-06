@@ -215,7 +215,7 @@ abstract class StripeReader {
     if (chunk.useByteBuffer()) {
       ByteBufferStrategy strategy = new ByteBufferStrategy(
           chunk.getByteBuffer(), dfsStripedInputStream.getReadStatistics(),
-          dfsStripedInputStream.getDFSClient());
+          dfsStripedInputStream.getDfsClient());
       return new ByteBufferStrategy[]{strategy};
     }
 
@@ -225,7 +225,7 @@ abstract class StripeReader {
       ByteBuffer buffer = chunk.getChunkBuffer().getSlice(i);
       strategies[i] = new ByteBufferStrategy(buffer,
               dfsStripedInputStream.getReadStatistics(),
-              dfsStripedInputStream.getDFSClient());
+              dfsStripedInputStream.getDfsClient());
     }
     return strategies;
   }
@@ -248,8 +248,6 @@ abstract class StripeReader {
       DFSClient.LOG.warn("Found Checksum error for "
           + currentBlock + " from " + currentNode
           + " at " + ce.getPos());
-      //Clear buffer to make next decode success
-      strategy.getReadBuffer().clear();
       // we want to remember which block replicas we have tried
       corruptedBlocks.addCorruptedBlock(currentBlock, currentNode);
       throw ce;
@@ -257,8 +255,6 @@ abstract class StripeReader {
       DFSClient.LOG.warn("Exception while reading from "
           + currentBlock + " of " + dfsStripedInputStream.getSrc() + " from "
           + currentNode, e);
-      //Clear buffer to make next decode success
-      strategy.getReadBuffer().clear();
       throw e;
     }
   }

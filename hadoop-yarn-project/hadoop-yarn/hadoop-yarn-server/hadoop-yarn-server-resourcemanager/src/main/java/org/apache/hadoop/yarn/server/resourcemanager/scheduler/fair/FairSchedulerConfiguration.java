@@ -20,12 +20,10 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair;
 import static org.apache.hadoop.yarn.util.resource.ResourceUtils.RESOURCE_REQUEST_VALUE_PATTERN;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
@@ -85,39 +83,29 @@ public class FairSchedulerConfiguration extends Configuration {
 
   private static final String CONF_PREFIX =  "yarn.scheduler.fair.";
 
-  /**
-   * Used during FS-&gt;CS conversion. When enabled, background threads are
-   * not started. This property should NOT be used by end-users!
-   */
-  public static final String MIGRATION_MODE = CONF_PREFIX + "migration.mode";
-
   public static final String ALLOCATION_FILE = CONF_PREFIX + "allocation.file";
   protected static final String DEFAULT_ALLOCATION_FILE = "fair-scheduler.xml";
   
   /** Whether pools can be created that were not specified in the FS configuration file
    */
-  public static final String ALLOW_UNDECLARED_POOLS = CONF_PREFIX +
-      "allow-undeclared-pools";
-  public static final boolean DEFAULT_ALLOW_UNDECLARED_POOLS = true;
+  protected static final String ALLOW_UNDECLARED_POOLS = CONF_PREFIX + "allow-undeclared-pools";
+  protected static final boolean DEFAULT_ALLOW_UNDECLARED_POOLS = true;
   
   /** Whether to use the user name as the queue name (instead of "default") if
    * the request does not specify a queue. */
-  public static final String  USER_AS_DEFAULT_QUEUE = CONF_PREFIX +
-      "user-as-default-queue";
-  public static final boolean DEFAULT_USER_AS_DEFAULT_QUEUE = true;
+  protected static final String  USER_AS_DEFAULT_QUEUE = CONF_PREFIX + "user-as-default-queue";
+  protected static final boolean DEFAULT_USER_AS_DEFAULT_QUEUE = true;
 
   protected static final float  DEFAULT_LOCALITY_THRESHOLD = -1.0f;
 
   /** Cluster threshold for node locality. */
-  public static final String LOCALITY_THRESHOLD_NODE = CONF_PREFIX +
-      "locality.threshold.node";
-  public static final float  DEFAULT_LOCALITY_THRESHOLD_NODE =
+  protected static final String LOCALITY_THRESHOLD_NODE = CONF_PREFIX + "locality.threshold.node";
+  protected static final float  DEFAULT_LOCALITY_THRESHOLD_NODE =
 		  DEFAULT_LOCALITY_THRESHOLD;
 
   /** Cluster threshold for rack locality. */
-  public static final String LOCALITY_THRESHOLD_RACK = CONF_PREFIX +
-      "locality.threshold.rack";
-  public static final float  DEFAULT_LOCALITY_THRESHOLD_RACK =
+  protected static final String LOCALITY_THRESHOLD_RACK = CONF_PREFIX + "locality.threshold.rack";
+  protected static final float  DEFAULT_LOCALITY_THRESHOLD_RACK =
 		  DEFAULT_LOCALITY_THRESHOLD;
 
   /**
@@ -149,10 +137,10 @@ public class FairSchedulerConfiguration extends Configuration {
    * {@link #ASSIGN_MULTIPLE} to improve  container allocation ramp up.
    */
   @Deprecated
-  public static final String CONTINUOUS_SCHEDULING_ENABLED = CONF_PREFIX +
+  protected static final String CONTINUOUS_SCHEDULING_ENABLED = CONF_PREFIX +
       "continuous-scheduling-enabled";
   @Deprecated
-  public static final boolean DEFAULT_CONTINUOUS_SCHEDULING_ENABLED = false;
+  protected static final boolean DEFAULT_CONTINUOUS_SCHEDULING_ENABLED = false;
 
   /**
    * Sleep time of each pass in continuous scheduling (5ms in default).
@@ -160,22 +148,24 @@ public class FairSchedulerConfiguration extends Configuration {
    * Only used when {@link #CONTINUOUS_SCHEDULING_ENABLED} is enabled
    */
   @Deprecated
-  public static final String CONTINUOUS_SCHEDULING_SLEEP_MS = CONF_PREFIX +
+  protected static final String CONTINUOUS_SCHEDULING_SLEEP_MS = CONF_PREFIX +
       "continuous-scheduling-sleep-ms";
   @Deprecated
-  public static final int DEFAULT_CONTINUOUS_SCHEDULING_SLEEP_MS = 5;
+  protected static final int DEFAULT_CONTINUOUS_SCHEDULING_SLEEP_MS = 5;
 
   /** Whether preemption is enabled. */
-  public static final String  PREEMPTION = CONF_PREFIX + "preemption";
-  public static final boolean DEFAULT_PREEMPTION = false;
+  protected static final String  PREEMPTION = CONF_PREFIX + "preemption";
+  protected static final boolean DEFAULT_PREEMPTION = false;
+
+  protected static final String  AM_PREEMPTION = CONF_PREFIX + "am.preemption";
+  protected static final boolean DEFAULT_AM_PREEMPTION = true;
 
   protected static final String PREEMPTION_THRESHOLD =
       CONF_PREFIX + "preemption.cluster-utilization-threshold";
   protected static final float DEFAULT_PREEMPTION_THRESHOLD = 0.8f;
 
-  public static final String WAIT_TIME_BEFORE_KILL = CONF_PREFIX +
-      "waitTimeBeforeKill";
-  public static final int DEFAULT_WAIT_TIME_BEFORE_KILL = 15000;
+  protected static final String WAIT_TIME_BEFORE_KILL = CONF_PREFIX + "waitTimeBeforeKill";
+  protected static final int DEFAULT_WAIT_TIME_BEFORE_KILL = 15000;
 
   /**
    * Postfix for resource allocation increments in the
@@ -192,19 +182,18 @@ public class FairSchedulerConfiguration extends Configuration {
    * This is intended to be a backdoor on production clusters, and hence
    * intentionally not documented.
    */
-  public static final String WAIT_TIME_BEFORE_NEXT_STARVATION_CHECK_MS =
+  protected static final String WAIT_TIME_BEFORE_NEXT_STARVATION_CHECK_MS =
       CONF_PREFIX + "waitTimeBeforeNextStarvationCheck";
-  public static final long
+  protected static final long
       DEFAULT_WAIT_TIME_BEFORE_NEXT_STARVATION_CHECK_MS = 10000;
 
   /** Whether to assign multiple containers in one check-in. */
   public static final String  ASSIGN_MULTIPLE = CONF_PREFIX + "assignmultiple";
-  public static final boolean DEFAULT_ASSIGN_MULTIPLE = false;
+  protected static final boolean DEFAULT_ASSIGN_MULTIPLE = false;
 
   /** Whether to give more weight to apps requiring many resources. */
-  public static final String  SIZE_BASED_WEIGHT = CONF_PREFIX +
-      "sizebasedweight";
-  public static final boolean DEFAULT_SIZE_BASED_WEIGHT = false;
+  protected static final String  SIZE_BASED_WEIGHT = CONF_PREFIX + "sizebasedweight";
+  protected static final boolean DEFAULT_SIZE_BASED_WEIGHT = false;
 
   /** Maximum number of containers to assign on each check-in. */
   public static final String DYNAMIC_MAX_ASSIGN =
@@ -215,8 +204,8 @@ public class FairSchedulerConfiguration extends Configuration {
    * Specify exact number of containers to assign on each heartbeat, if dynamic
    * max assign is turned off.
    */
-  public static final String MAX_ASSIGN = CONF_PREFIX + "max.assign";
-  public static final int DEFAULT_MAX_ASSIGN = -1;
+  protected static final String MAX_ASSIGN = CONF_PREFIX + "max.assign";
+  protected static final int DEFAULT_MAX_ASSIGN = -1;
 
   /** The update interval for calculating resources in FairScheduler .*/
   public static final String UPDATE_INTERVAL_MS =
@@ -230,15 +219,6 @@ public class FairSchedulerConfiguration extends Configuration {
 
   private static final String INVALID_RESOURCE_DEFINITION_PREFIX =
           "Error reading resource config--invalid resource definition: ";
-  private static final String RESOURCE_PERCENTAGE_PATTERN =
-      "^(-?(\\d+)(\\.\\d*)?)\\s*%\\s*";
-  private static final String RESOURCE_VALUE_PATTERN =
-      "^(-?\\d+)(\\.\\d*)?\\s*";
-  /**
-   * For resources separated by spaces instead of a comma.
-   */
-  private static final String RESOURCES_WITH_SPACES_PATTERN =
-      "-?\\d+(?:\\.\\d*)?\\s*[a-z]+\\s*";
 
   public FairSchedulerConfiguration() {
     super();
@@ -395,6 +375,10 @@ public class FairSchedulerConfiguration extends Configuration {
     return getBoolean(PREEMPTION, DEFAULT_PREEMPTION);
   }
 
+  public boolean getAMPreemptionEnabled() {
+    return getBoolean(AM_PREEMPTION, DEFAULT_AM_PREEMPTION);
+  }
+
   public float getPreemptionUtilizationThreshold() {
     return getFloat(PREEMPTION_THRESHOLD, DEFAULT_PREEMPTION_THRESHOLD);
   }
@@ -530,7 +514,7 @@ public class FairSchedulerConfiguration extends Configuration {
       try {
         if (asPercent) {
           double percentage = parseNewStyleResourceAsPercentage(value,
-              resourceName, resourceValue);
+              resourceValue);
           configurableResource.setPercentage(resourceName, percentage);
         } else {
           long parsedValue = parseNewStyleResourceAsAbsoluteValue(value,
@@ -549,10 +533,10 @@ public class FairSchedulerConfiguration extends Configuration {
   }
 
   private static double parseNewStyleResourceAsPercentage(
-      String value, String resource, String resourceValue)
+      String value, String resourceValue)
       throws AllocationConfigurationException {
     try {
-      return findPercentage(resourceValue, resource);
+      return findPercentage(resourceValue, "");
     } catch (AllocationConfigurationException ex) {
       throw createConfigException(value,
           "The resource values must all be percentages. \""
@@ -586,39 +570,18 @@ public class FairSchedulerConfiguration extends Configuration {
             getResourcePercentage(StringUtils.toLowerCase(value)));
   }
 
-  private static ConfigurableResource parseOldStyleResource(String input)
+  private static ConfigurableResource parseOldStyleResource(String value)
           throws AllocationConfigurationException {
-    final String lowerCaseInput = StringUtils.toLowerCase(input);
-    String[] resources = lowerCaseInput.split(",");
-
-    if (resources.length != 2) {
-      resources = findOldStyleResourcesInSpaceSeparatedInput(lowerCaseInput);
-      if (resources.length != 2) {
-        throw new AllocationConfigurationException(
-            "Cannot parse resource values from input: " + input);
-      }
-    }
-    final int memory = parseOldStyleResourceMemory(resources);
-    final int vcores = parseOldStyleResourceVcores(resources);
+    final String lCaseValue = StringUtils.toLowerCase(value);
+    final int memory = parseOldStyleResourceMemory(lCaseValue);
+    final int vcores = parseOldStyleResourceVcores(lCaseValue);
     return new ConfigurableResource(
             BuilderUtils.newResource(memory, vcores));
   }
 
-  private static String[] findOldStyleResourcesInSpaceSeparatedInput(
-      String input) {
-    final Pattern pattern = Pattern.compile(RESOURCES_WITH_SPACES_PATTERN);
-    final Matcher matcher = pattern.matcher(input);
-
-    List<String> resources = Lists.newArrayList();
-    while (matcher.find()) {
-      resources.add(matcher.group(0));
-    }
-    return resources.toArray(new String[0]);
-  }
-
-  private static int parseOldStyleResourceMemory(String[] resources)
+  private static int parseOldStyleResourceMemory(String lCaseValue)
       throws AllocationConfigurationException {
-    final int memory = findResource(resources, "mb");
+    final int memory = findResource(lCaseValue, "mb");
 
     if (memory < 0) {
       throw new AllocationConfigurationException(
@@ -628,9 +591,9 @@ public class FairSchedulerConfiguration extends Configuration {
     return memory;
   }
 
-  private static int parseOldStyleResourceVcores(String[] resources)
+  private static int parseOldStyleResourceVcores(String lCaseValue)
       throws AllocationConfigurationException {
-    final int vcores = findResource(resources, "vcores");
+    final int vcores = findResource(lCaseValue, "vcores");
 
     if (vcores < 0) {
       throw new AllocationConfigurationException(
@@ -640,62 +603,45 @@ public class FairSchedulerConfiguration extends Configuration {
     return vcores;
   }
 
-  private static double[] getResourcePercentage(String val)
-      throws AllocationConfigurationException {
+  private static double[] getResourcePercentage(
+      String val) throws AllocationConfigurationException {
     int numberOfKnownResourceTypes = ResourceUtils
         .getNumberOfCountableResourceTypes();
     double[] resourcePercentage = new double[numberOfKnownResourceTypes];
-    String[] values = val.split(",");
+    String[] strings = val.split(",");
 
-    if (values.length == 1) {
-      double percentage = findPercentage(values, "");
+    if (strings.length == 1) {
+      double percentage = findPercentage(strings[0], "");
       for (int i = 0; i < numberOfKnownResourceTypes; i++) {
         resourcePercentage[i] = percentage;
       }
     } else {
-      resourcePercentage[0] = findPercentage(values, "memory");
-      resourcePercentage[1] = findPercentage(values, "cpu");
+      resourcePercentage[0] = findPercentage(val, "memory");
+      resourcePercentage[1] = findPercentage(val, "cpu");
     }
 
     return resourcePercentage;
   }
 
-  private static double findPercentage(String resourceValue, String resource)
+  private static double findPercentage(String val, String units)
       throws AllocationConfigurationException {
-    return findPercentageInternal(resource, resourceValue, false);
-  }
-
-  private static double findPercentage(String[] resourceValues, String resource)
-      throws AllocationConfigurationException {
-    String resourceValue = findResourceFromValues(resourceValues, resource);
-    return findPercentageInternal(resource, resourceValue, true);
-  }
-
-  private static double findPercentageInternal(String resource,
-      String resourceValue, boolean includeResourceInPattern)
-      throws AllocationConfigurationException {
-    final Pattern pattern;
-    if (includeResourceInPattern) {
-      pattern = Pattern.compile(RESOURCE_PERCENTAGE_PATTERN + resource);
-    } else {
-      pattern = Pattern.compile(RESOURCE_PERCENTAGE_PATTERN);
-    }
-
-    Matcher matcher = pattern.matcher(resourceValue);
-    if (!matcher.matches()) {
-      if (resource.equals("")) {
+    final Pattern pattern =
+        Pattern.compile("(-?(\\d+)(\\.\\d*)?)\\s*%\\s*" + units);
+    Matcher matcher = pattern.matcher(val);
+    if (!matcher.find()) {
+      if (units.equals("")) {
         throw new AllocationConfigurationException("Invalid percentage: " +
-            resourceValue);
+            val);
       } else {
-        throw new AllocationConfigurationException("Invalid percentage of " +
-            resource + ": " + resourceValue);
+        throw new AllocationConfigurationException("Missing resource: " +
+            units);
       }
     }
     double percentage = Double.parseDouble(matcher.group(1)) / 100.0;
 
     if (percentage < 0) {
       throw new AllocationConfigurationException("Invalid percentage: " +
-          resourceValue + ", percentage should not be negative!");
+          val + ", percentage should not be negative!");
     }
 
     return percentage;
@@ -720,26 +666,13 @@ public class FairSchedulerConfiguration extends Configuration {
     return getLong(UPDATE_INTERVAL_MS, DEFAULT_UPDATE_INTERVAL_MS);
   }
   
-  private static int findResource(String[] resourceValues, String resource)
+  private static int findResource(String val, String units)
       throws AllocationConfigurationException {
-    String resourceValue = findResourceFromValues(resourceValues, resource);
-    final Pattern pattern = Pattern.compile(RESOURCE_VALUE_PATTERN +
-        resource);
-    Matcher matcher = pattern.matcher(resourceValue);
+    final Pattern pattern = Pattern.compile("(-?\\d+)(\\.\\d*)?\\s*" + units);
+    Matcher matcher = pattern.matcher(val);
     if (!matcher.find()) {
-      throw new AllocationConfigurationException("Invalid value of " +
-          (resource.equals("mb") ? "memory" : resource) + ": " + resourceValue);
+      throw new AllocationConfigurationException("Missing resource: " + units);
     }
     return Integer.parseInt(matcher.group(1));
-  }
-
-  private static String findResourceFromValues(String[] resourceValues,
-      String resource) throws AllocationConfigurationException {
-    for (String resourceValue : resourceValues) {
-      if (resourceValue.contains(resource)) {
-        return resourceValue.trim();
-      }
-    }
-    throw new AllocationConfigurationException("Missing resource: " + resource);
   }
 }

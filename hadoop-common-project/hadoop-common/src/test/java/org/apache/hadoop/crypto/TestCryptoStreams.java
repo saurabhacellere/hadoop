@@ -30,22 +30,17 @@ import org.apache.hadoop.fs.ByteBufferPositionedReadable;
 import org.apache.hadoop.fs.ByteBufferReadable;
 import org.apache.hadoop.fs.CanSetDropBehind;
 import org.apache.hadoop.fs.CanSetReadahead;
-import org.apache.hadoop.fs.CanUnbuffer;
 import org.apache.hadoop.fs.HasEnhancedByteBufferAccess;
 import org.apache.hadoop.fs.HasFileDescriptor;
 import org.apache.hadoop.fs.PositionedReadable;
 import org.apache.hadoop.fs.ReadOption;
 import org.apache.hadoop.fs.Seekable;
-import org.apache.hadoop.fs.StreamCapabilities;
 import org.apache.hadoop.fs.Syncable;
 import org.apache.hadoop.io.ByteBufferPool;
 import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.io.DataOutputBuffer;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Test;
-
-import static org.apache.hadoop.fs.contract.ContractTestUtils.assertCapabilities;
 
 public class TestCryptoStreams extends CryptoStreamsTestBase {
   /**
@@ -95,7 +90,7 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
   }
   
   private class FakeOutputStream extends OutputStream 
-      implements Syncable, CanSetDropBehind, StreamCapabilities{
+      implements Syncable, CanSetDropBehind{
     private final byte[] oneByteBuf = new byte[1];
     private final DataOutputBuffer out;
     private boolean closed;
@@ -147,6 +142,11 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
     }
 
     @Override
+    public void sync() throws IOException {
+      hflush();
+    }
+
+    @Override
     public void hflush() throws IOException {
       checkStream();
       flush();
@@ -157,19 +157,7 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
       checkStream();
       flush();
     }
-
-    @Override
-    public boolean hasCapability(String capability) {
-      switch (capability.toLowerCase()) {
-      case StreamCapabilities.HFLUSH:
-      case StreamCapabilities.HSYNC:
-      case StreamCapabilities.DROPBEHIND:
-        return true;
-      default:
-        return false;
-      }
-    }
-
+    
     private void checkStream() throws IOException {
       if (closed) {
         throw new IOException("Stream is closed!");
@@ -177,18 +165,17 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
     }
   }
   
-  static class FakeInputStream extends InputStream
+  public static class FakeInputStream extends InputStream
       implements Seekable, PositionedReadable, ByteBufferReadable,
-                 HasFileDescriptor, CanSetDropBehind, CanSetReadahead,
-                 HasEnhancedByteBufferAccess, CanUnbuffer,
-                 StreamCapabilities, ByteBufferPositionedReadable {
+      ByteBufferPositionedReadable, HasFileDescriptor, CanSetDropBehind,
+      CanSetReadahead, HasEnhancedByteBufferAccess {
     private final byte[] oneByteBuf = new byte[1];
     private int pos = 0;
     private final byte[] data;
     private final int length;
     private boolean closed = false;
 
-    FakeInputStream(DataInputBuffer in) {
+    public FakeInputStream(DataInputBuffer in) {
       data = in.getData();
       length = in.getLength();
     }
@@ -331,30 +318,6 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
     }
 
     @Override
-    public void readFully(long position, ByteBuffer buf) throws IOException {
-      if (buf == null) {
-        throw new NullPointerException();
-      } else if (!buf.hasRemaining()) {
-        return;
-      }
-
-      if (position > length) {
-        throw new IOException("Cannot read after EOF.");
-      }
-      if (position < 0) {
-        throw new IOException("Cannot read to negative offset.");
-      }
-
-      checkStream();
-
-      if (position + buf.remaining() > length) {
-        throw new EOFException("Reach the end of stream.");
-      }
-
-      buf.put(data, (int) position, buf.remaining());
-    }
-
-    @Override
     public void readFully(long position, byte[] b, int off, int len)
         throws IOException {
       if (b == null) {
@@ -420,24 +383,6 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
     }
 
     @Override
-    public void unbuffer() {
-    }
-
-    @Override
-    public boolean hasCapability(String capability) {
-      switch (capability.toLowerCase()) {
-      case StreamCapabilities.READAHEAD:
-      case StreamCapabilities.DROPBEHIND:
-      case StreamCapabilities.UNBUFFER:
-      case StreamCapabilities.READBYTEBUFFER:
-      case StreamCapabilities.PREADBYTEBUFFER:
-        return true;
-      default:
-        return false;
-      }
-    }
-
-    @Override
     public FileDescriptor getFileDescriptor() throws IOException {
       return null;
     }
@@ -460,46 +405,5 @@ public class TestCryptoStreams extends CryptoStreamsTestBase {
       int ret = read( oneByteBuf, 0, 1 );
       return ( ret <= 0 ) ? -1 : (oneByteBuf[0] & 0xff);
     }
-  }
-
-  /**
-   * This tests {@link StreamCapabilities#hasCapability(String)} for the
-   * the underlying streams.
-   */
-  @Test(timeout = 120000)
-  public void testHasCapability() throws Exception {
-    // verify hasCapability returns what FakeOutputStream is set up for
-    CryptoOutputStream cos =
-        (CryptoOutputStream) getOutputStream(defaultBufferSize, key, iv);
-
-    assertCapabilities(cos,
-        new String[] {
-            StreamCapabilities.HFLUSH,
-            StreamCapabilities.HSYNC,
-            StreamCapabilities.DROPBEHIND
-        },
-        new String[] {
-            StreamCapabilities.READAHEAD,
-            StreamCapabilities.UNBUFFER
-        }
-    );
-
-    // verify hasCapability for input stream
-    CryptoInputStream cis =
-        (CryptoInputStream) getInputStream(defaultBufferSize, key, iv);
-
-    assertCapabilities(cis,
-        new String[] {
-            StreamCapabilities.DROPBEHIND,
-            StreamCapabilities.READAHEAD,
-            StreamCapabilities.UNBUFFER,
-            StreamCapabilities.READBYTEBUFFER,
-            StreamCapabilities.PREADBYTEBUFFER
-        },
-        new String[] {
-            StreamCapabilities.HFLUSH,
-            StreamCapabilities.HSYNC
-        }
-    );
   }
 }

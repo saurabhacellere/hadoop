@@ -168,7 +168,7 @@ public class TestDiskError {
         new DatanodeInfo[0], new StorageType[0], null,
         BlockConstructionStage.PIPELINE_SETUP_CREATE, 1, 0L, 0L, 0L,
         checksum, CachingStrategy.newDefaultStrategy(), false, false,
-        null, null, new String[0]);
+        null, null, new String[0], null);
     out.flush();
 
     // close the connection before sending the content of the block
@@ -240,10 +240,10 @@ public class TestDiskError {
   @Test
   public void testDataTransferWhenBytesPerChecksumIsZero() throws IOException {
     DataNode dn0 = cluster.getDataNodes().get(0);
-    // Make a mock blockScanner class and return true whenever isEnabled is
+    // Make a mock blockScanner class and return false whenever isEnabled is
     // called on blockScanner
     BlockScanner mockScanner = Mockito.mock(BlockScanner.class);
-    Mockito.when(mockScanner.isEnabled()).thenReturn(true);
+    Mockito.when(mockScanner.isEnabled()).thenReturn(false);
     dn0.setBlockScanner(mockScanner);
     Path filePath = new Path("test.dat");
     FSDataOutputStream out = fs.create(filePath, (short) 1);
