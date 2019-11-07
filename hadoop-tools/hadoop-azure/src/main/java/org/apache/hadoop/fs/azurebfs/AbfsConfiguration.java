@@ -59,7 +59,7 @@ import org.apache.hadoop.fs.azurebfs.security.AbfsDelegationTokenManager;
 import org.apache.hadoop.fs.azurebfs.services.AuthType;
 import org.apache.hadoop.fs.azurebfs.services.KeyProvider;
 import org.apache.hadoop.fs.azurebfs.services.SimpleKeyProvider;
-import org.apache.hadoop.fs.azurebfs.utils.SSLSocketFactoryEx;
+import org.apache.hadoop.security.ssl.DelegatingSSLSocketFactory;
 import org.apache.hadoop.security.ProviderUtils;
 import org.apache.hadoop.util.ReflectionUtils;
 
@@ -177,6 +177,10 @@ public class AbfsConfiguration{
   @BooleanConfigurationValidatorAnnotation(ConfigurationKey = FS_AZURE_USE_UPN,
       DefaultValue = DEFAULT_USE_UPN)
   private boolean useUpn;
+
+  @BooleanConfigurationValidatorAnnotation(ConfigurationKey = FS_AZURE_ABFS_LATENCY_TRACK,
+          DefaultValue = DEFAULT_ABFS_LATENCY_TRACK)
+  private boolean trackLatency;
 
   private Map<String, String> storageAccountKeys;
 
@@ -447,7 +451,7 @@ public class AbfsConfiguration{
     return this.userAgentId;
   }
 
-  public SSLSocketFactoryEx.SSLChannelMode getPreferredSSLFactoryOption() {
+  public DelegatingSSLSocketFactory.SSLChannelMode getPreferredSSLFactoryOption() {
     return getEnum(FS_AZURE_SSL_CHANNEL_MODE_KEY, DEFAULT_FS_AZURE_SSL_CHANNEL_MODE);
   }
 
@@ -469,6 +473,10 @@ public class AbfsConfiguration{
 
   public boolean isUpnUsed() {
     return this.useUpn;
+  }
+
+  public boolean shouldTrackLatency() {
+    return this.trackLatency;
   }
 
   public AccessTokenProvider getTokenProvider() throws TokenAccessProviderException {
@@ -538,7 +546,7 @@ public class AbfsConfiguration{
       } catch(IllegalArgumentException e) {
         throw e;
       } catch (Exception e) {
-        throw new TokenAccessProviderException("Unable to load custom token provider class.", e);
+        throw new TokenAccessProviderException("Unable to load custom token provider class: " + e, e);
       }
 
     } else {
@@ -679,5 +687,4 @@ public class AbfsConfiguration{
     }
     return authority;
   }
-
 }
